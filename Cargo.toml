@@ -1,0 +1,15 @@
+[package]
+name = "tetris"
+version = "0.1.0"
+authors = ["0rphon <59403052+0rphon@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dynerr = "0.1.11"
+engine = {git = "https://github.com/0rphon/Untitled_Engine"}
+rand = "0.7.3"
+
+[profile.dev]
+opt-level = 3
