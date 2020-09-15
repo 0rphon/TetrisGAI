@@ -343,30 +343,32 @@ impl Board {
         while self.piece_down() {}
     }
 
-    ///does game updates
-    pub fn update(&mut self) -> DynResult<()> {                         
+    /// does game updates
+    /// returns true if gameover occurred
+    pub fn update(&mut self) -> DynResult<bool> {                         
         if !self.piece_down() {                                         
             self.set_piece()?;                                          
             let cleared = self.update_rows();
             self.update_score(cleared)?;
             if self.check_game_over() {
                 self.game_over()?;
+                Ok(true)
             } else {
                 if let Err(e) = self.spawn_piece() {
                     dynmatch!(e,
                         type TetrisError {
                             arm TetrisError::SpawnError(_) => {
                                 log!(format!("{} Assuming game over", e), "tetris.log");
-                                self.game_over()
+                                self.game_over()?;
+                                Ok(true)
                             },
                             _ => Err(e)
                         },
                         _ => Err(e)
-                    );
-                }
+                    )
+                } else {Ok(false)}
             }
-        };
-        Ok(())
+        } else {Ok(false)}
     }
 
     ///updates score on board and in file

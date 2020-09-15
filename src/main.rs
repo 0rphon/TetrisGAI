@@ -3,26 +3,42 @@ mod tetris;
 use dynerr::*;
 use engine::{drawing, game};
 
-const TARGET_FPS: u64 = 10;
-const FRAME_PER_UPDATE: u32 = 5;
+
+const TARGET_FPS: u64 = 60;
+const START_SPEED: u32 = 20;
 const GAME_TITLE: &str = "Tetris";
 
-struct UpdateFlags {
+
+struct UpdateManager {
     frame: u32,
-    target: u32,
-    set: bool,
+    speed: u32,
+    start_speed: u32,
 }
-impl UpdateFlags {
-    fn new(target: u32) -> Self {
+impl UpdateManager {
+    fn new(speed: u32) -> Self {
         Self {
             frame: 0,
-            target,
-            set: false,
+            speed,
+            start_speed: speed
         }
     }
 
-    fn check(&self) -> bool {
-        if self.frame >= self.target || self.set {
+    fn get_speed(&self) -> u32 {
+        self.start_speed - self.speed
+    }
+
+    fn reset(&mut self) {
+        self.frame = 0;
+        self.speed = self.start_speed;
+    }
+
+    fn should_update(&mut self) -> bool {
+        self.frame+=1;
+        if self.frame % self.speed == 0 {
+            if self.frame >= 1000 {
+                self.speed = self.speed.checked_sub(1).unwrap_or(0);
+                self.frame = 0;
+            }
             true
         } else {false}
     }
@@ -30,7 +46,7 @@ impl UpdateFlags {
 
 fn main() {
     let mut board = check!(tetris::Board::new_standard());
-    let mut update_flags = UpdateFlags::new(FRAME_PER_UPDATE);
+    let mut update_manager = UpdateManager::new(START_SPEED);
 
     let mut screen = drawing::Screen::new(                                                              //create blank screen buffer
         tetris::STANDARD_WIDTH*tetris::BLOCK_SIZE,
@@ -54,15 +70,14 @@ fn main() {
 
             screen.wipe();
             board.draw(&mut screen);
-            screen.draw_text((10,20), &format!("Score: {}",board.score), 16.0, &[255;4], drawing::DEBUG_FONT);
-            screen.draw_text((10,40), &format!("Highscore: {}",board.highscore), 16.0, &[255;4], drawing::DEBUG_FONT);
+            screen.draw_text((10,20), &format!("Speed: {}",update_manager.get_speed()), 16.0, &[255;4], drawing::DEBUG_FONT);
+            screen.draw_text((10,40), &format!("Score: {}",board.score), 16.0, &[255;4], drawing::DEBUG_FONT);
+            screen.draw_text((10,60), &format!("Highscore: {}",board.highscore), 16.0, &[255;4], drawing::DEBUG_FONT);
 
 
             screen.flatten(window.pixels.get_frame());                                                  //flatten screen to 1d Vec<[u8;4]>
             window.pixels.render().unwrap();                                                            //render
 
-            //use std::{thread, time};
-            //thread::sleep(time::Duration::from_secs(1));
             fpslock.end_frame();
         }
 
@@ -73,19 +88,13 @@ fn main() {
                 return;
             }
 
-            if input.key_held(game::VirtualKeyCode::A) {board.piece_left();}
-            if input.key_held(game::VirtualKeyCode::S) {
-                if !board.piece_down() {
-                    update_flags.set = true;
-                }
-            }
-            if input.key_held(game::VirtualKeyCode::D) {board.piece_right();}
-            if input.key_held(game::VirtualKeyCode::R) {board.try_rotate();}
-            if input.key_pressed(game::VirtualKeyCode::Space){
-                board.drop_piece();
-                update_flags.set = true;
-            }
-            if input.key_pressed(game::VirtualKeyCode::F3) {println!("F3")}
+            if input.key_pressed(game::VirtualKeyCode::A)    {board.piece_left();}
+            if input.key_pressed(game::VirtualKeyCode::S)    {board.piece_down();}
+            if input.key_pressed(game::VirtualKeyCode::D)    {board.piece_right();}
+            if input.key_pressed(game::VirtualKeyCode::R)    {board.try_rotate();}
+            if input.key_pressed(game::VirtualKeyCode::Space){board.drop_piece();}
+            //if input.key_pressed(game::VirtualKeyCode::F3) {println!("F3")}
+
 
             if let Some(factor) = input.scale_factor_changed() {                                        //if window dimensions changed
                 window.hidpi_factor = factor;                                                           //update hidpi_factor
@@ -95,11 +104,10 @@ fn main() {
             }
 
             //handles updating
-            if update_flags.check() {
-                check!(board.update());
-                update_flags = UpdateFlags::new(FRAME_PER_UPDATE);
-            } else {
-                update_flags.frame += 1;
+            if update_manager.should_update() {
+                if check!(board.update()) {
+                    update_manager.reset();
+                }
             }
             window.window.request_redraw();                                                             //request frame redraw
         }
