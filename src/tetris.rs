@@ -7,47 +7,56 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 
 pub const BLOCK_SIZE:       usize = 32;
-pub const BORDER_SIZE:      usize = 2;
-pub const BORDER_COLOR:     [u8;4] = [0xFF;4];
-pub const SHADOW_COLOR:     [u8;4] = [0x00;4];
+const BORDER_SIZE:      usize = 2;
+const BORDER_COLOR:     [u8;4] = [0x00, 0x00, 0x00, 0xFF];
+const SHADOW_COLOR:     [u8;4] = [0x00;4];
+const SHADOW_BORDER_COLOR:[u8;4]= [0xDC, 0xDC, 0xDC, 0xFF];     //[0X00;4] TO USE THE PIECE COLOR FOR SHADOW BORDER
 
 pub const STANDARD_WIDTH:   usize = 10;
 pub const STANDARD_HEIGHT:  usize = 20;
-pub const BOARD_COLOR:      [u8;4] = [0x00;4];
-pub const GRID_COLOR:       [u8;4] = [0x30, 0x30, 0x32, 0xFF];
-pub const GRID_SIZE:        usize = 1;
+const BOARD_COLOR:      [u8;4] = [0x00;4];
+const GRID_COLOR:       [u8;4] = [0x30, 0x30, 0x32, 0xFF];
+const GRID_SIZE:        usize = 1;
+const GAME_OVER_COLOR: [u8;4] = [0xDC, 0xDC, 0xDC, 0xFF];
 
 
+const I_COLOR: [u8;4] = [0x00, 0xFF, 0xFF, 0xFF];
 const I_DATA: [&[bool;4];4] = [
     &[false, false, false, false],
     &[true , true , true , true ],
     &[false, false, false, false],
     &[false, false, false, false],
 ];
+const O_COLOR: [u8;4] = [0xFF, 0xFF, 0x00, 0xFF];
 const O_DATA: [&[bool;2];2] = [
     &[true , true],
     &[true , true],
 ];
+const T_COLOR: [u8;4] = [0x80, 0x00, 0x80, 0xFF];
 const T_DATA: [&[bool;3];3] = [
     &[false, true , false],
     &[true , true , true ],
     &[false, false, false],
 ];
+const S_COLOR: [u8;4] = [0x00, 0x80, 0x00, 0xFF];
 const S_DATA: [&[bool;3];3] = [
     &[false, true , true ],
     &[true , true , false],
     &[false, false, false],
 ];
+const Z_COLOR: [u8;4] = [0xFF, 0x00, 0x00, 0xFF];
 const Z_DATA: [&[bool;3];3] = [
     &[true , true , false],
     &[false, true , true ],
     &[false, false, false],
 ];
+const J_COLOR: [u8;4] = [0x00, 0x00, 0xFF, 0xFF];
 const J_DATA: [&[bool;3];3] = [
     &[true , false, false],
     &[true , true , true ],
     &[false, false, false],
 ];
+const L_COLOR: [u8;4] = [0xFF, 0xA5, 0x00, 0xFF];
 const L_DATA: [&[bool;3];3] = [
     &[false, false, true ],
     &[true , true , true ],
@@ -108,7 +117,7 @@ impl Piece {
                 || (0..BORDER_SIZE).contains(&pixel_i)
                 || (BLOCK_SIZE-BORDER_SIZE..BLOCK_SIZE).contains(&row_i)
                 || (BLOCK_SIZE-BORDER_SIZE..BLOCK_SIZE).contains(&pixel_i) {
-                    block[row_i][pixel_i] = [0xFF;4];
+                    block[row_i][pixel_i] = BORDER_COLOR;
                 }
             }
         }
@@ -133,7 +142,7 @@ impl Piece {
         Self {
             type_: PieceType::I,
             location,
-            data: Self::gen_piece(fit!(I_DATA), [0xc7, 0xf6, 0xf3, 0xFF]),
+            data: Self::gen_piece(fit!(I_DATA), I_COLOR),
         }
     }
 
@@ -142,7 +151,7 @@ impl Piece {
         Self {
             type_: PieceType::O,
             location,
-            data: Self::gen_piece(fit!(O_DATA), [0xf7, 0xf0, 0xae, 0xFF]),
+            data: Self::gen_piece(fit!(O_DATA), O_COLOR),
         }
     }
 
@@ -151,7 +160,7 @@ impl Piece {
         Self {
             type_: PieceType::T,
             location,
-            data: Self::gen_piece(fit!(T_DATA), [0xdc, 0xbd, 0xf8, 0xFF]),
+            data: Self::gen_piece(fit!(T_DATA), T_COLOR),
         }
     }
 
@@ -160,7 +169,7 @@ impl Piece {
         Self {
             type_: PieceType::S,
             location,
-            data: Self::gen_piece(fit!(S_DATA), [0xc1, 0xf8, 0xb1, 0xFF]),
+            data: Self::gen_piece(fit!(S_DATA), S_COLOR),
         }
     }
 
@@ -169,7 +178,7 @@ impl Piece {
         Self {
             type_: PieceType::Z,
             location,
-            data: Self::gen_piece(fit!(Z_DATA), [0xee, 0x72, 0x7e, 0xFF]),
+            data: Self::gen_piece(fit!(Z_DATA), Z_COLOR),
         }
     }
 
@@ -178,7 +187,7 @@ impl Piece {
         Self {
             type_: PieceType::J,
             location,
-            data: Self::gen_piece(fit!(J_DATA), [0x98, 0xa7, 0xee, 0xFF]),
+            data: Self::gen_piece(fit!(J_DATA), J_COLOR),
         }
     }
 
@@ -187,7 +196,7 @@ impl Piece {
         Self {
             type_: PieceType::L,
             location,
-            data: Self::gen_piece(fit!(L_DATA), [0xe4, 0xab, 0x7f, 0xFF]),
+            data: Self::gen_piece(fit!(L_DATA), L_COLOR),
         }
     }
 
@@ -213,7 +222,20 @@ impl Piece {
                     shadow.data[row][block].as_mut().unwrap().img = sprite.img.iter().map(|y|
                         y.iter().map(|x|
                             if *x != BORDER_COLOR {SHADOW_COLOR}
-                            else {*x}
+                            else {
+                                if SHADOW_BORDER_COLOR == [0x00;4] {
+                                    match self.type_ {
+                                    PieceType::I => {I_COLOR}
+                                    PieceType::O => {O_COLOR}
+                                    PieceType::T => {T_COLOR}
+                                    PieceType::S => {S_COLOR}
+                                    PieceType::Z => {Z_COLOR}
+                                    PieceType::J => {J_COLOR}
+                                    PieceType::L => {L_COLOR}
+                                    }
+                                } else {SHADOW_BORDER_COLOR}
+                                
+                            }
                         ).collect()
                     ).collect();
                 }
@@ -293,6 +315,7 @@ enum Move {
     Left,
     Right,
     Rotate,
+    Drop
 }
 
 #[derive(Clone)]
@@ -373,8 +396,8 @@ impl Board {
     }
 
     ///moves piece down until it gets set
-    pub fn piece_drop(&mut self) {
-        while self.piece_down() {}
+    pub fn piece_drop(&mut self) -> bool {
+        self.move_piece(Move::Drop)
     }
 
     //attempts to move piece. returns bool
@@ -386,6 +409,10 @@ impl Board {
                 Move::Left  => self.piece.get_left(),
                 Move::Right => self.piece.get_right(),
                 Move::Rotate=> self.piece.get_rotated(),
+                Move::Drop  => {
+                    while self.move_piece(Move::Down) {}; 
+                    return true
+                }
             }
         };
         if !self.check_collision(&moved) {
@@ -434,11 +461,11 @@ impl Board {
     ///updates score on board and in file
     fn update_score(&mut self, cleared: Vec<usize>) -> DynResult<()> {
         let modifier = match cleared.len() {
-            1 => 50,
-            2 => 150,
-            3 => 350,
-            4 => 1000,
-            _ => 2000
+            1 => 40,
+            2 => 100,
+            3 => 300,
+            4 => 1200,
+            _ => 3600
         };
         self.score += cleared.iter().map(|row|
             modifier*(self.height-row+1)
@@ -564,8 +591,8 @@ impl Board {
         let mut backdrop = vec!(vec!(BOARD_COLOR;width);height);
         backdrop.iter_mut().enumerate().for_each(|(yi,row)|
             row.iter_mut().enumerate().for_each(|(xi, pixel)|
-                if (0..BORDER_SIZE).contains(&(yi%BLOCK_SIZE))
-                || (0..BORDER_SIZE).contains(&(xi%BLOCK_SIZE))
+                if (0..GRID_SIZE).contains(&(yi%BLOCK_SIZE))
+                || (0..GRID_SIZE).contains(&(xi%BLOCK_SIZE))
                 || (BLOCK_SIZE-GRID_SIZE..BLOCK_SIZE).contains(&(yi%BLOCK_SIZE))
                 || (BLOCK_SIZE-GRID_SIZE..BLOCK_SIZE).contains(&(xi%BLOCK_SIZE)) {
                     *pixel = GRID_COLOR;
@@ -576,24 +603,12 @@ impl Board {
     }
 
     pub fn draw(&self, screen: &mut engine::drawing::Screen){
+        screen.wipe();
         screen.draw_sprite(&self.backdrop, (0,0));
         for row in 0..self.data.len() {
             for block in 0..self.data[row].len() {
                 if let Some(sprite) = &self.data[row][block] {
                     screen.draw_sprite(sprite, ((block*sprite.width) as isize, (row*sprite.height) as isize))
-                }
-            }
-        }
-        for row in 0..self.piece.data.len() {
-            for block in 0..self.piece.data[row].len() {
-                if let Some(sprite) = &self.piece.data[row][block] {
-                    screen.draw_sprite(
-                        sprite, 
-                        (
-                            self.piece.location.0*sprite.width as isize + (block*sprite.width) as isize,
-                            self.piece.location.1*sprite.height as isize + (row*sprite.height) as isize
-                        )
-                    )
                 }
             }
         }
@@ -610,5 +625,41 @@ impl Board {
                 }
             }
         }
+        for row in 0..self.piece.data.len() {
+            for block in 0..self.piece.data[row].len() {
+                if let Some(sprite) = &self.piece.data[row][block] {
+                    screen.draw_sprite(
+                        sprite, 
+                        (
+                            self.piece.location.0*sprite.width as isize + (block*sprite.width) as isize,
+                            self.piece.location.1*sprite.height as isize + (row*sprite.height) as isize
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    pub fn draw_gameover(
+        &self,
+        screen: &mut engine::drawing::Screen,
+        speed: usize,
+        second: usize
+    ) {
+        self.draw(screen);
+
+        let message = "GAME OVER";
+        let center = 320_usize.checked_sub((message.len()*64)/2).unwrap_or(0);
+        screen.draw_text((center ,40), &message, 64.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+    
+        let message = format!("Speed: {}",speed);
+        screen.draw_text((75,95), &message, 32.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+        let message = format!("Score: {}",self.score);
+        screen.draw_text((75,115), &message, 32.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+        let message = format!("Highscore: {}",self.highscore);
+        screen.draw_text((27,135), &message, 32.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+    
+        let message = format!("{}", second);
+        screen.draw_text((131,200), &message, 128.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
     }
 }

@@ -9,19 +9,19 @@ use std::thread::sleep;
 
 
 const TARGET_FPS: u64 = 60;
-const START_SPEED: u32 = 20;
+const START_SPEED: usize = 20;
 const GAME_TITLE: &str = "Tetris";
 const GAME_OVER_PAUSE: usize= 5;
-const GAME_OVER_COLOR: [u8;4] = [0x8d, 0x15, 0x0c, 0xFF];
+
 
 
 struct UpdateManager {
-    frame: u32,
-    speed: u32,
-    start_speed: u32,
+    frame: usize,
+    speed: usize,
+    start_speed: usize,
 }
 impl UpdateManager {
-    fn new(speed: u32) -> Self {
+    fn new(speed: usize) -> Self {
         Self {
             frame: 0,
             speed,
@@ -29,7 +29,7 @@ impl UpdateManager {
         }
     }
 
-    fn get_speed(&self) -> u32 {
+    fn get_speed(&self) -> usize {
         self.start_speed - self.speed
     }
 
@@ -113,26 +113,9 @@ fn main() {
             if update_manager.should_update() {
                 if check!(board.update()) {
                     for i in (1..=GAME_OVER_PAUSE).rev() {
-                        screen.wipe();
-                        board.draw(&mut screen);
-
-                        
-                        let message = "GAME OVER";
-                        let center = 320_usize.checked_sub((message.len()*64)/2).unwrap_or(0);
-                        screen.draw_text((center ,40), &message, 64.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-
-                        let message = format!("Speed: {}",update_manager.get_speed());
-                        screen.draw_text((75,95), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-                        let message = format!("Score: {}",board.score);
-                        screen.draw_text((75,115), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-                        let message = format!("Highscore: {}",board.highscore);
-                        screen.draw_text((27,135), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-
-                        let message = format!("{}", i);
-                        screen.draw_text((131,200), &message, 128.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-
-                        screen.flatten(window.pixels.get_frame());                                                  //flatten screen to 1d Vec<[u8;4]>
-                        window.pixels.render().unwrap();                                                            //render
+                        board.draw_gameover(&mut screen, update_manager.get_speed(), i);
+                        screen.flatten(window.pixels.get_frame());
+                        check!(window.pixels.render());
                         sleep(Duration::from_secs(1));
                     }
                     check!(board.reset());
