@@ -261,7 +261,7 @@ impl Piece {
                                     PieceType::L => {L_COLOR}
                                     }
                                 } else {SHADOW_BORDER_COLOR}
-                                
+
                             }
                         ).collect()
                     ).collect();
@@ -361,6 +361,10 @@ pub struct Board {
     padding: usize,
     pub score: usize,
     pub highscore: usize,
+    cleared: usize,
+    frame: usize,
+    pub level: usize,
+    pub gameover: bool,
 }
 
 impl Board {
@@ -379,7 +383,11 @@ impl Board {
             padding: BOARD_PAD*BLOCK_SIZE,
             data: vec!(vec!(None; BOARD_WIDTH); BOARD_HEIGHT),
             score: 0,
-            highscore: Self::get_highscore()?
+            highscore: Self::get_highscore()?,
+            cleared: 0,
+            frame: 0,
+            level: 0,
+            gameover: false,
         };
         board.width = board.backdrop.width;
         board.height = board.backdrop.height;
@@ -389,51 +397,67 @@ impl Board {
 
     ///attempts to hold the current piece
     pub fn piece_hold(&mut self) -> DynResult<bool> {
-        if self.piece.can_hold {
-            self.piece.location = self.spawn;
-            if let Some(held) = self.held_piece.clone() {
-                self.held_piece = Some(self.piece.clone());
-                self.piece = held;
-            }
-            else {
-                self.held_piece = Some(self.piece.clone());
-                self.next_piece()?;
-            }
-            self.piece.can_hold = false;
-            self.update_shadow();
-            Ok(true)
+        if !self.gameover {
+            if self.piece.can_hold {
+                self.piece.location = self.spawn;
+                if let Some(held) = self.held_piece.clone() {
+                    self.held_piece = Some(self.piece.clone());
+                    self.piece = held;
+                }
+                else {
+                    self.held_piece = Some(self.piece.clone());
+                    self.next_piece()?;
+                }
+                self.piece.can_hold = false;
+                self.update_shadow();
+                Ok(true)
+            } else {Ok(false)}
         } else {Ok(false)}
     }
 
     ///attempts to rotate the piece
     pub fn piece_rotate(&mut self) -> bool {
-        self.move_piece(Move::Rotate)
+        if !self.gameover {
+            self.move_piece(Move::Rotate)
+        } else {false}
     }
 
     ///attempts to move piece up
     #[allow(unused)]
     pub fn piece_up(&mut self) -> bool {
-        self.move_piece(Move::Up)
+        if !self.gameover {
+            self.move_piece(Move::Up)
+        } else {false}
     }
 
     /// attempts to move piece down
     pub fn piece_down(&mut self) -> bool {
-        self.move_piece(Move::Down)
+        if !self.gameover {
+            self.move_piece(Move::Down)
+        } else {false}
     }
 
     ///attempts to move piece left
     pub fn piece_left(&mut self) -> bool {
-        self.move_piece(Move::Left)
+        if !self.gameover {
+            self.move_piece(Move::Left)
+        } else {false}
     }
 
     ///attempts to move piece right
     pub fn piece_right(&mut self) -> bool {
-        self.move_piece(Move::Right)
+        if !self.gameover {
+            self.move_piece(Move::Right)
+        } else {false}
     }
 
     ///moves piece down until it gets set
-    pub fn piece_drop(&mut self) -> bool {
-        self.move_piece(Move::Drop)
+    pub fn piece_drop(&mut self) -> DynResult<bool> {
+        if !self.gameover {
+            self.move_piece(Move::Drop);
+            self.update()?;
+            Ok(true)
+        } else {Ok(false)}
     }
 
     //attempts to move piece. returns bool for success
@@ -446,7 +470,7 @@ impl Board {
                 Move::Right => self.piece.get_right(),
                 Move::Rotate=> self.piece.get_rotated(),
                 Move::Drop  => {
-                    while self.move_piece(Move::Down) {}; 
+                    while self.move_piece(Move::Down) {};
                     return true
                 }
             }
@@ -463,40 +487,51 @@ impl Board {
         let mut shadow = self.piece.get_shadow();
         loop {
             let moved = shadow.get_down();
-            if !self.check_collision(&moved) {shadow = moved}   
+            if !self.check_collision(&moved) {shadow = moved}
             else {break}
         }
         self.shadow = shadow;
-    } 
+    }
 
     /// does game updates
-    /// returns true if gameover occurred
-    pub fn update(&mut self) -> DynResult<bool> {                         
-        if !self.piece_down() {                                         
-            self.set_piece()?;                                          
+    fn update(&mut self) -> DynResult<()> {
+        if !self.piece_down() {
+            self.set_piece()?;
             let cleared = self.update_rows();
-            self.update_score(cleared)?;
+            self.update_progress(cleared)?;
             if self.check_game_over() {
-                Ok(true)
+                self.gameover = true;
             } else {
                 if let Err(e) = self.next_piece() {
                     dynmatch!(e,
                         type TetrisError {
                             arm TetrisError::SpawnError(_) => {
-                                //log!(format!("{} Assuming game over", e), "debug.log");
-                                Ok(true)
+                                self.gameover = true;
                             },
-                            _ => Err(e)
+                            _ => return Err(e)
                         },
-                        _ => Err(e)
+                        _ => return Err(e)
                     )
-                } else {Ok(false)}
+                }
             }
-        } else {Ok(false)}
+        }
+        Ok(())
+    }
+
+    ///attempts to update
+    pub fn try_update(&mut self) -> DynResult<()> {
+        self.frame+=1;
+        if !self.gameover
+        && self.frame%self.get_speed() == 0 {
+            self.update()?;
+        }
+        Ok(())
     }
 
     ///updates score on board and in file
-    fn update_score(&mut self, cleared: Vec<usize>) -> DynResult<()> {
+    fn update_progress(&mut self, cleared: Vec<usize>) -> DynResult<()> {
+        self.cleared += cleared.len();
+        self.level = self.cleared/10;
         let modifier = match cleared.len() {
             1 => 40,
             2 => 100,
@@ -529,6 +564,27 @@ impl Board {
         file.read_to_string(&mut contents)?;
         if contents.len() == 0 {Ok(0)}
         else {Ok(contents.parse::<usize>()?)}
+    }
+
+    ///gets the current frame delay based on level
+    fn get_speed(&self) -> usize {
+        match self.level {
+            0       =>  48,
+            1       =>  43,
+            2       =>  38,
+            3       =>  33,
+            4       =>  28,
+            5       =>  23,
+            6       =>  18,
+            7       =>  13,
+            8       =>  8,
+            9       =>  6,
+            10..=12 =>  5,
+            13..=15 =>  4,
+            16..=18 =>  3,
+            19..=28 =>  2,
+            _ =>        1
+        }
     }
 
     ///resets board
@@ -613,7 +669,7 @@ impl Board {
     }
 
     ///draws screen during game play
-    pub fn draw(&self, screen: &mut engine::drawing::Screen, speed: usize){
+    pub fn draw(&self, screen: &mut engine::drawing::Screen){
         screen.wipe();
         screen.draw_sprite(&self.backdrop, (0,0));
         //draw set blocks
@@ -630,7 +686,7 @@ impl Board {
                 for block in 0..piece.data[row].len() {
                     if let Some(sprite) = &piece.data[row][block] {
                         screen.draw_sprite(
-                            sprite, 
+                            sprite,
                             (
                                 location.0*sprite.width as isize + ((block*sprite.width)+padding) as isize,
                                 location.1*sprite.height as isize + (row*sprite.height) as isize
@@ -649,25 +705,13 @@ impl Board {
 
         screen.draw_text((9,191), &format!("{}",self.highscore), 32.0, &[255;4], drawing::DEBUG_FONT);
         screen.draw_text((9,254), &format!("{}",self.score), 32.0, &[255;4], drawing::DEBUG_FONT);
-        screen.draw_text((9,318), &format!("{}",speed), 32.0, &[255;4], drawing::DEBUG_FONT);
-    }
+        screen.draw_text((9,318), &format!("{:02}",self.level), 32.0, &[255;4], drawing::DEBUG_FONT);
 
-    ///draws gameover screen
-    pub fn draw_gameover(
-        &self,
-        screen: &mut drawing::Screen,
-        speed: usize,
-        second: usize
-    ) {
-        self.draw(screen, speed);
-
-        let message = "GAME OVER";
-        screen.draw_text((195 ,40), &message, 64.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-
-        let message = format!("Score: {}",self.score);
-        screen.draw_text((225,115), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
-    
-        let message = format!("{}", second);
-        screen.draw_text((290,200), &message, 128.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
+        if self.gameover {
+            screen.draw_text((195 ,40), "GAME OVER", 64.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
+            let message = format!("SCORE: {}",self.score);
+            screen.draw_text((225,115), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
+            screen.draw_text((215,200), "SPACE TO RESTART", 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
+        }
     }
 }
