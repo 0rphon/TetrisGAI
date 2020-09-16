@@ -705,7 +705,7 @@ impl Board {
 
         screen.draw_text((9,191), &format!("{}",self.highscore), 32.0, &[255;4], drawing::DEBUG_FONT);
         screen.draw_text((9,254), &format!("{}",self.score), 32.0, &[255;4], drawing::DEBUG_FONT);
-        screen.draw_text((9,318), &format!("{:02}",self.level), 32.0, &[255;4], drawing::DEBUG_FONT);
+        screen.draw_text((83,287), &format!("{:02}",self.level), 32.0, &[255;4], drawing::DEBUG_FONT);
 
         if self.gameover {
             screen.draw_text((195 ,40), "GAME OVER", 64.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
