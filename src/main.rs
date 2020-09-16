@@ -1,4 +1,4 @@
-//#![windows_subsystem = "windows"]         UNCOMMENT FOR RELEASE
+#![windows_subsystem = "windows"]         //UNCOMMENT FOR RELEASE
 mod tetris;
 
 use dynerr::*;
@@ -13,7 +13,7 @@ const TARGET_FPS: u64 = 60;
 ///start out doing updates every x frames
 const START_SPEED: usize = 30;
 ///how many updates til you increase speed level
-const SPEED_LEVEL_DURATION: usize = 2500;
+const SPEED_LEVEL_DURATION: usize = 1500;
 const GAME_TITLE: &str = "Tetris";
 const GAMEOVER_SECS: f32 = 5.0;
 const GAMEOVER_TICK_LEN: f32 = 0.25;
