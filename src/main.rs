@@ -34,6 +34,7 @@ fn main() {
 
             screen.wipe();
             board.draw(&mut screen);
+            //screen.draw_text((0,0), fpslock.get_fps(), 16.0, &[0xFF;4], drawing::DEBUG_FONT);
             screen.flatten(window.pixels.get_frame());                                                  
             window.pixels.render().unwrap();                                                            
 
@@ -48,6 +49,32 @@ fn main() {
 
         if input.update(&event) {                                                                       
 
+            if input.key_pressed(game::VirtualKeyCode::A)
+            || input.key_pressed(game::VirtualKeyCode::Left)    
+            {board.piece_left();}
+            
+            if input.key_pressed(game::VirtualKeyCode::S)
+            || input.key_pressed(game::VirtualKeyCode::Down)    
+            {board.piece_down();}
+            
+            if input.key_pressed(game::VirtualKeyCode::D)
+            || input.key_pressed(game::VirtualKeyCode::Right)   
+            {board.piece_right();}
+            
+            if input.key_pressed(game::VirtualKeyCode::W)
+            || input.key_pressed(game::VirtualKeyCode::R)
+            || input.key_pressed(game::VirtualKeyCode::X)    
+            || input.key_pressed(game::VirtualKeyCode::Up)      
+            {board.piece_rotate();}
+            
+            
+            if input.key_pressed(game::VirtualKeyCode::F)    
+            ||input.key_pressed(game::VirtualKeyCode::C)        
+            {check!(board.piece_hold());}
+            
+            if input.key_pressed(game::VirtualKeyCode::Space)   
+            {check!(board.piece_drop());}
+            
             if input.key_pressed(game::VirtualKeyCode::Escape) || input.quit() {                        
                 *control_flow = game::ControlFlow::Exit;                                                
                 return;
@@ -57,32 +84,6 @@ fn main() {
             || input.key_pressed(game::VirtualKeyCode::NumpadEnter) 
             || input.key_pressed(game::VirtualKeyCode::Space) && board.gameover 
                 {check!(board.reset())}
-
-            if input.key_pressed(game::VirtualKeyCode::A)
-            || input.key_pressed(game::VirtualKeyCode::Left)    
-                {board.piece_left();}
-
-            if input.key_pressed(game::VirtualKeyCode::S)
-            || input.key_pressed(game::VirtualKeyCode::Down)    
-                {board.piece_down();}
-
-            if input.key_pressed(game::VirtualKeyCode::D)
-            || input.key_pressed(game::VirtualKeyCode::Right)   
-                {board.piece_right();}
-
-            if input.key_pressed(game::VirtualKeyCode::W)
-            || input.key_pressed(game::VirtualKeyCode::R)
-            || input.key_pressed(game::VirtualKeyCode::X)    
-            || input.key_pressed(game::VirtualKeyCode::Up)      
-                {board.piece_rotate();}
-
-
-            if input.key_pressed(game::VirtualKeyCode::F)    
-            ||input.key_pressed(game::VirtualKeyCode::C)        
-                {check!(board.piece_hold());}
-
-            if input.key_pressed(game::VirtualKeyCode::Space)   
-                {check!(board.piece_drop());}
 
             if let Some(factor) = input.scale_factor_changed() {                                        
                 window.hidpi_factor = factor;                                                           
