@@ -150,7 +150,8 @@ fn main() {
                 if input.key_pressed(game::VirtualKeyCode::D)
                 || input.key_pressed(game::VirtualKeyCode::Right)   {board.piece_right();}
 
-                if input.key_pressed(game::VirtualKeyCode::R)
+                if input.key_pressed(game::VirtualKeyCode::W)
+                || input.key_pressed(game::VirtualKeyCode::R)
                 || input.key_pressed(game::VirtualKeyCode::X)    
                 || input.key_pressed(game::VirtualKeyCode::Up)      {board.piece_rotate();}
 
