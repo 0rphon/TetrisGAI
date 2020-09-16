@@ -69,11 +69,16 @@ impl UpdateManager {
                 self.gameover_prog+=1;
                 Ok(true)
             } else {
-                board.reset()?;
-                *self = Self::new();        
+                self.reset(board)?;      
                 Ok(false)
             }
         } else {Ok(false)}
+    }
+
+    fn reset(&mut self, board: &mut tetris::Board) -> DynResult<()> {
+        board.reset()?;
+        *self = Self::new();
+        Ok(())
     }
 
     ///gets seconds til end of gameover
@@ -131,6 +136,9 @@ fn main() {
                 *control_flow = game::ControlFlow::Exit;                                                
                 return;
             }
+
+            if input.key_pressed(game::VirtualKeyCode::Return)
+            || input.key_pressed(game::VirtualKeyCode::NumpadEnter) {check!(update_manager.reset(&mut board))}
 
             if !update_manager.gameover {
                 if input.key_pressed(game::VirtualKeyCode::A)
