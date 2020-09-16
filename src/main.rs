@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]         //UNCOMMENT FOR RELEASE
 mod tetris;
+use tetris::{Board, Move};
 
 use dynerr::*;
 use engine::{drawing, game};
@@ -10,11 +11,11 @@ const GAME_TITLE: &str = "Tetris";
 
 
 fn main() {
-    let mut board = check!(tetris::Board::new_board());
+    let mut board = check!(Board::new_board());
 
     let mut screen = drawing::Screen::new(                                                              
-        board.width,
-        board.height
+        board.dimensions.0,
+        board.dimensions.1
     );
 
     let mut fpslock = game::FpsLock::create_lock(TARGET_FPS);                                           
@@ -23,8 +24,8 @@ fn main() {
     let mut input = game::WinitInputHelper::new();                                                      
     let mut window = game::Window::init(                                                                
         GAME_TITLE,
-        board.width,
-        board.height,
+        board.dimensions.0,
+        board.dimensions.1,
         &event_loop
     );
 
@@ -51,21 +52,22 @@ fn main() {
 
             if input.key_pressed(game::VirtualKeyCode::A)
             || input.key_pressed(game::VirtualKeyCode::Left)    
-            {board.piece_left();}
+            {board.move_piece(Move::Left);}
             
             if input.key_pressed(game::VirtualKeyCode::S)
             || input.key_pressed(game::VirtualKeyCode::Down)    
-            {board.piece_down();}
+            {board.move_piece(Move::Down);}
+
             
             if input.key_pressed(game::VirtualKeyCode::D)
             || input.key_pressed(game::VirtualKeyCode::Right)   
-            {board.piece_right();}
+            {board.move_piece(Move::Right);}
             
             if input.key_pressed(game::VirtualKeyCode::W)
             || input.key_pressed(game::VirtualKeyCode::R)
             || input.key_pressed(game::VirtualKeyCode::X)    
             || input.key_pressed(game::VirtualKeyCode::Up)      
-            {board.piece_rotate();}
+            {board.move_piece(Move::Rotate);}
             
             
             if input.key_pressed(game::VirtualKeyCode::F)    

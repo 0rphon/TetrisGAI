@@ -96,7 +96,7 @@ impl fmt::Display for TetrisError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             TetrisError::SpawnError((x,y))      => write!(f, "TetrisError::SpawnError: failed to spawn piece at x:{} y:{}", x, y),
-            TetrisError::GenerationError(i)     => write!(f, "PieceError::GenerationError: random number generator returned invalid value: {}", i),
+            TetrisError::GenerationError(i)     => write!(f, "TetrisError::GenerationError: random number generator returned invalid value: {}", i),
         }
     }
 }
@@ -337,7 +337,8 @@ impl Piece {
 
 
 ///possible piece movements
-enum Move {
+#[allow(unused)]
+pub enum Move {
     Up,
     Down,
     Left,
@@ -346,7 +347,7 @@ enum Move {
     Drop,
 }
 
-///the board object
+///the board object                                         SHOULD SPLIT UP INTO SEPARATE STRUCTS THAT THE BOARD CAN INTERACT WITH. LIKE "BoardPieces" AND "BoardState"
 #[derive(Clone)]
 pub struct Board {
     piece:  Piece,
@@ -356,14 +357,13 @@ pub struct Board {
     spawn: (isize, isize),
     data:   Vec<Vec<Option<Sprite>>>,
     backdrop: Sprite,
-    pub width: usize,
-    pub height: usize,
+    pub dimensions: (usize, usize),
     padding: usize,
-    pub score: usize,
-    pub highscore: usize,
+    score: usize,
+    highscore: usize,
     cleared: usize,
     frame: usize,
-    pub level: usize,
+    level: usize,
     pub gameover: bool,
 }
 
@@ -378,8 +378,7 @@ impl Board {
             held_piece: None,
             spawn,
             backdrop: Sprite::load(BOARD_SPRITE)?,
-            width: 0,
-            height: 0,
+            dimensions: (0,0),
             padding: BOARD_PAD*BLOCK_SIZE,
             data: vec!(vec!(None; BOARD_WIDTH); BOARD_HEIGHT),
             score: 0,
@@ -389,10 +388,22 @@ impl Board {
             level: 0,
             gameover: false,
         };
-        board.width = board.backdrop.width;
-        board.height = board.backdrop.height;
+        board.dimensions = (board.backdrop.width, board.backdrop.height);
         board.update_shadow();
         Ok(board)
+    }
+
+    ///gets the score from "highscore"
+    fn get_highscore() -> DynResult<usize> {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("highscore")?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        if contents.len() == 0 {Ok(0)}
+        else {Ok(contents.parse::<usize>()?)}
     }
 
     ///attempts to hold the current piece
@@ -415,42 +426,6 @@ impl Board {
         } else {Ok(false)}
     }
 
-    ///attempts to rotate the piece
-    pub fn piece_rotate(&mut self) -> bool {
-        if !self.gameover {
-            self.move_piece(Move::Rotate)
-        } else {false}
-    }
-
-    ///attempts to move piece up
-    #[allow(unused)]
-    pub fn piece_up(&mut self) -> bool {
-        if !self.gameover {
-            self.move_piece(Move::Up)
-        } else {false}
-    }
-
-    /// attempts to move piece down
-    pub fn piece_down(&mut self) -> bool {
-        if !self.gameover {
-            self.move_piece(Move::Down)
-        } else {false}
-    }
-
-    ///attempts to move piece left
-    pub fn piece_left(&mut self) -> bool {
-        if !self.gameover {
-            self.move_piece(Move::Left)
-        } else {false}
-    }
-
-    ///attempts to move piece right
-    pub fn piece_right(&mut self) -> bool {
-        if !self.gameover {
-            self.move_piece(Move::Right)
-        } else {false}
-    }
-
     ///moves piece down until it gets set
     pub fn piece_drop(&mut self) -> DynResult<bool> {
         if !self.gameover {
@@ -461,7 +436,7 @@ impl Board {
     }
 
     //attempts to move piece. returns bool for success
-    fn move_piece(&mut self, direction: Move) -> bool {
+    pub fn move_piece(&mut self, direction: Move) -> bool {
         let moved = {
             match direction {
                 Move::Up    => self.piece.get_up(),
@@ -493,13 +468,44 @@ impl Board {
         self.shadow = shadow;
     }
 
+    ///attempts to update
+    pub fn try_update(&mut self) -> DynResult<()> {
+        self.frame+=1;
+        if !self.gameover
+        && self.frame%self.get_speed() == 0 {
+            self.update()?;
+        }
+        Ok(())
+    }
+
+    ///gets the current frame delay based on level
+    fn get_speed(&self) -> usize {
+        match self.level {
+            0       =>  48,
+            1       =>  43,
+            2       =>  38,
+            3       =>  33,
+            4       =>  28,
+            5       =>  23,
+            6       =>  18,
+            7       =>  13,
+            8       =>  8,
+            9       =>  6,
+            10..=12 =>  5,
+            13..=15 =>  4,
+            16..=18 =>  3,
+            19..=28 =>  2,
+            _ =>        1
+        }
+    }
+
     /// does game updates
     fn update(&mut self) -> DynResult<()> {
-        if !self.piece_down() {
+        if !self.move_piece(Move::Down) {
             self.set_piece()?;
             let cleared = self.update_rows();
             self.update_progress(cleared)?;
-            if self.check_game_over() {
+            if self.data[0].iter().any(|b| b.is_some()) {
                 self.gameover = true;
             } else {
                 if let Err(e) = self.next_piece() {
@@ -512,20 +518,40 @@ impl Board {
                         },
                         _ => return Err(e)
                     )
+                } else {self.update_shadow()}
+            }
+        }
+        Ok(())
+    }
+
+    ///attempts to set piece
+    fn set_piece(&mut self) -> DynResult<()>{
+        for row in 0..self.piece.data.len() {
+            for block in 0..self.piece.data[row].len() {
+                if let Some(_) = self.piece.data[row][block] {
+                    if let Some(y) = self.data.get_mut((self.piece.location.1+row as isize) as usize) {                //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
+                        if let Some(x) = y.get_mut((self.piece.location.0+block as isize) as usize) {                  //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
+                            *x = self.piece.data[row][block].clone();
+                        }
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    ///attempts to update
-    pub fn try_update(&mut self) -> DynResult<()> {
-        self.frame+=1;
-        if !self.gameover
-        && self.frame%self.get_speed() == 0 {
-            self.update()?;
+    ///checks for filled rows and removes them
+    fn update_rows(&mut self) -> Vec<usize> {
+        let mut cleared = Vec::new();
+        for row in 0..self.data.len() {
+            //if row doesnt have any empty blocks then remove
+            if !self.data[row].iter().any(|b| b.is_none()) {
+                self.data.remove(row);
+                self.data.insert(0, vec!(None;self.data[0].len()));
+                cleared.push(row);
+            }
         }
-        Ok(())
+        cleared
     }
 
     ///updates score on board and in file
@@ -553,76 +579,6 @@ impl Board {
         Ok(())
     }
 
-    ///gets the score from "highscore"
-    fn get_highscore() -> DynResult<usize> {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open("highscore")?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        if contents.len() == 0 {Ok(0)}
-        else {Ok(contents.parse::<usize>()?)}
-    }
-
-    ///gets the current frame delay based on level
-    fn get_speed(&self) -> usize {
-        match self.level {
-            0       =>  48,
-            1       =>  43,
-            2       =>  38,
-            3       =>  33,
-            4       =>  28,
-            5       =>  23,
-            6       =>  18,
-            7       =>  13,
-            8       =>  8,
-            9       =>  6,
-            10..=12 =>  5,
-            13..=15 =>  4,
-            16..=18 =>  3,
-            19..=28 =>  2,
-            _ =>        1
-        }
-    }
-
-    ///resets board
-    pub fn reset(&mut self) -> DynResult<()> {
-        *self = Self::new_board()?;
-        Ok(())
-    }
-
-    ///checks if top row has set blocks
-    fn check_game_over(&self) -> bool {
-        if self.data[0].iter().any(|b| b.is_some()) {true}              //UNCHECKED INDEX
-        else {false}
-    }
-
-    ///check if row is full
-    fn check_full(&mut self, row: usize) -> bool {
-        if self.data[row].iter().any(|b| b.is_none()) {false}
-        else {true}
-    }
-
-    ///deletes row in vec and adds row at top
-    fn clear_row(&mut self, row: usize) {
-        self.data.remove(row);
-        self.data.insert(0, vec!(None;self.data[0].len()))              //UNCHECKED INDEX
-    }
-
-    ///checks for filled rows and removes them
-    fn update_rows(&mut self) -> Vec<usize> {
-        let mut cleared = Vec::new();
-        for row in 0..self.data.len() {
-            if self.check_full(row) {
-                self.clear_row(row);
-                cleared.push(row);
-            }
-        }
-        cleared
-    }
-
     ///spawns a new piece
     fn next_piece(&mut self) -> DynResult<()> {
         if !self.check_collision(&self.next_piece) {
@@ -634,22 +590,6 @@ impl Board {
             Ok(())
         }
         else {dynerr!(TetrisError::SpawnError(self.spawn))}
-    }
-
-    ///attempts to set piece
-    fn set_piece(&mut self) -> DynResult<()>{
-        for row in 0..self.piece.data.len() {
-            for block in 0..self.piece.data[row].len() {
-                if let Some(_) = self.piece.data[row][block] {
-                    if let Some(y) = self.data.get_mut((self.piece.location.1+row as isize) as usize) {                //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                        if let Some(x) = y.get_mut((self.piece.location.0+block as isize) as usize) {                  //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                            *x = self.piece.data[row][block].clone();
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 
     ///takes a piece and checks its collision on the board
@@ -666,6 +606,12 @@ impl Board {
             }
         }
         false
+    }
+
+    ///resets board
+    pub fn reset(&mut self) -> DynResult<()> {
+        *self = Self::new_board()?;
+        Ok(())
     }
 
     ///draws screen during game play
