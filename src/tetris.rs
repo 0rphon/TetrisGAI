@@ -1,23 +1,38 @@
 use dynerr::*;
 use engine::sprite::Sprite;
+use engine::drawing;
 
 use rand::Rng;
 use std::{fmt, error};
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
-pub const BLOCK_SIZE:       usize = 32;
-const BORDER_SIZE:      usize = 2;
-const BORDER_COLOR:     [u8;4] = [0x00, 0x00, 0x00, 0xFF];
-const SHADOW_COLOR:     [u8;4] = [0x00;4];
-const SHADOW_BORDER_COLOR:[u8;4]= [0xDC, 0xDC, 0xDC, 0xFF];     //[0X00;4] TO USE THE PIECE COLOR FOR SHADOW BORDER
+///the size of each block. used to calc grid
+const BLOCK_SIZE:           usize           = 32;
+///the thickness of piece border in pixels
+const BORDER_SIZE:          usize           = 2;
+///the color of piece borders
+const BORDER_COLOR:         [u8;4]          = [0x00, 0x00, 0x00, 0xFF];
+///the color of shadow
+const SHADOW_COLOR:         [u8;4]          = [0x00;4];
+///the color of the shadows border
+const SHADOW_BORDER_COLOR:  [u8;4]          = [0xDC, 0xDC, 0xDC, 0xFF];     //[0X00;4] TO USE THE PIECE COLOR FOR SHADOW BORDER
 
-pub const STANDARD_WIDTH:   usize = 10;
-pub const STANDARD_HEIGHT:  usize = 20;
-const BOARD_COLOR:      [u8;4] = [0x00;4];
-const GRID_COLOR:       [u8;4] = [0x30, 0x30, 0x32, 0xFF];
-const GRID_SIZE:        usize = 1;
-const GAME_OVER_COLOR: [u8;4] = [0xDC, 0xDC, 0xDC, 0xFF];
+///width of board in blocks
+const BOARD_WIDTH:          usize           = 10;
+///height of board in blocks
+const BOARD_HEIGHT:         usize           = 20;
+///the left and right padding of board in blocks
+const BOARD_PAD:            usize           = 5;
+///the screen sprite
+const BOARD_SPRITE:         &str            = "board.png";
+///the location of the next piece in blocks
+const NEXT_PIECE_LOCATION:  (isize, isize)  = (16,1);
+///the location of the held piece in blocks
+const HELD_PIECE_LOCATION:  (isize, isize)  = (0, 1);
+///the color of gameover text
+const GAME_OVER_COLOR:      [u8;4]          = [0xFF;4];
+
 
 
 const I_COLOR: [u8;4] = [0x00, 0xFF, 0xFF, 0xFF];
@@ -98,14 +113,18 @@ impl error::Error for TetrisError {}
 
 
 
+///blocks in piece
 type PieceData = Vec<Vec<Option<Sprite>>>;
+///piece types
 #[derive(Clone)]
 enum PieceType {I, O, T, S, Z, J, L}
+///the piece object
 #[derive(Clone)]
 struct Piece {
     type_: PieceType,
     location: (isize, isize),
     data: PieceData,
+    can_hold: bool,
 }
 impl Piece {
     ///generates a colored block with a border
@@ -143,6 +162,7 @@ impl Piece {
             type_: PieceType::I,
             location,
             data: Self::gen_piece(fit!(I_DATA), I_COLOR),
+            can_hold: true,
         }
     }
 
@@ -152,6 +172,7 @@ impl Piece {
             type_: PieceType::O,
             location,
             data: Self::gen_piece(fit!(O_DATA), O_COLOR),
+            can_hold: true,
         }
     }
 
@@ -161,6 +182,7 @@ impl Piece {
             type_: PieceType::T,
             location,
             data: Self::gen_piece(fit!(T_DATA), T_COLOR),
+            can_hold: true,
         }
     }
 
@@ -170,6 +192,7 @@ impl Piece {
             type_: PieceType::S,
             location,
             data: Self::gen_piece(fit!(S_DATA), S_COLOR),
+            can_hold: true,
         }
     }
 
@@ -179,6 +202,7 @@ impl Piece {
             type_: PieceType::Z,
             location,
             data: Self::gen_piece(fit!(Z_DATA), Z_COLOR),
+            can_hold: true,
         }
     }
 
@@ -188,6 +212,7 @@ impl Piece {
             type_: PieceType::J,
             location,
             data: Self::gen_piece(fit!(J_DATA), J_COLOR),
+            can_hold: true,
         }
     }
 
@@ -197,6 +222,7 @@ impl Piece {
             type_: PieceType::L,
             location,
             data: Self::gen_piece(fit!(L_DATA), L_COLOR),
+            can_hold: true,
         }
     }
 
@@ -214,6 +240,7 @@ impl Piece {
         }
     }
 
+    ///gets the shadow of a piece
     fn get_shadow(&self) -> Piece {
         let mut shadow = self.clone();
         for row in 0..shadow.data.len() {
@@ -309,64 +336,73 @@ impl Piece {
 
 
 
+///possible piece movements
 enum Move {
     Up,
     Down,
     Left,
     Right,
     Rotate,
-    Drop
+    Drop,
 }
 
+///the board object
 #[derive(Clone)]
 pub struct Board {
     piece:  Piece,
     shadow: Piece,
+    next_piece: Piece,
+    held_piece: Option<Piece>,
     spawn: (isize, isize),
-    width: usize,
-    height: usize,
     data:   Vec<Vec<Option<Sprite>>>,
     backdrop: Sprite,
+    pub width: usize,
+    pub height: usize,
+    padding: usize,
     pub score: usize,
     pub highscore: usize,
 }
 
 impl Board {
     ///attempts to create a new standard sized board
-    pub fn new_standard() -> DynResult<Self> {
-        let spawn = (STANDARD_WIDTH as isize/2-2, 0);
+    pub fn new_board() -> DynResult<Self> {
+        let spawn = (BOARD_WIDTH as isize/2-2, 0);
         let mut board = Self {
             piece: Piece::gen_random(spawn)?,
             shadow: Piece::gen_random(spawn)?,
+            next_piece: Piece::gen_random(spawn)?,
+            held_piece: None,
             spawn,
-            width: STANDARD_WIDTH,
-            height: STANDARD_HEIGHT,
-            backdrop: Self::gen_backdrop(STANDARD_WIDTH, STANDARD_HEIGHT),
-            data: vec!(vec!(None; STANDARD_WIDTH); STANDARD_HEIGHT),
+            backdrop: Sprite::load(BOARD_SPRITE)?,
+            width: 0,
+            height: 0,
+            padding: BOARD_PAD*BLOCK_SIZE,
+            data: vec!(vec!(None; BOARD_WIDTH); BOARD_HEIGHT),
             score: 0,
             highscore: Self::get_highscore()?
         };
+        board.width = board.backdrop.width;
+        board.height = board.backdrop.height;
         board.update_shadow();
         Ok(board)
     }
 
-    ///attempts to create a new custom sized board
-    #[allow(unused)]
-    pub fn new_custom(width: usize, height: usize) -> DynResult<Self> {
-        let spawn = (width as isize/2-2, 0);
-        let mut board = Self {
-            piece: Piece::gen_random(spawn)?,
-            shadow: Piece::gen_random(spawn)?,
-            spawn,
-            width,
-            height,
-            backdrop: Self::gen_backdrop(width, height),
-            data: vec!(vec!(None; width); height),
-            score: 0,
-            highscore: Self::get_highscore()?
-        };
-        board.update_shadow();
-        Ok(board)
+    ///attempts to hold the current piece
+    pub fn piece_hold(&mut self) -> DynResult<bool> {
+        if self.piece.can_hold {
+            self.piece.location = self.spawn;
+            if let Some(held) = self.held_piece.clone() {
+                self.held_piece = Some(self.piece.clone());
+                self.piece = held;
+            }
+            else {
+                self.held_piece = Some(self.piece.clone());
+                self.next_piece()?;
+            }
+            self.piece.can_hold = false;
+            self.update_shadow();
+            Ok(true)
+        } else {Ok(false)}
     }
 
     ///attempts to rotate the piece
@@ -400,7 +436,7 @@ impl Board {
         self.move_piece(Move::Drop)
     }
 
-    //attempts to move piece. returns bool
+    //attempts to move piece. returns bool for success
     fn move_piece(&mut self, direction: Move) -> bool {
         let moved = {
             match direction {
@@ -422,6 +458,7 @@ impl Board {
         } else {false}
     }
 
+    ///updates the shadow piece
     fn update_shadow(&mut self) {
         let mut shadow = self.piece.get_shadow();
         loop {
@@ -442,11 +479,11 @@ impl Board {
             if self.check_game_over() {
                 Ok(true)
             } else {
-                if let Err(e) = self.spawn_piece() {
+                if let Err(e) = self.next_piece() {
                     dynmatch!(e,
                         type TetrisError {
                             arm TetrisError::SpawnError(_) => {
-                                log!(format!("{} Assuming game over", e), "tetris.log");
+                                log!(format!("{} Assuming game over", e), "debug.log");
                                 Ok(true)
                             },
                             _ => Err(e)
@@ -468,11 +505,15 @@ impl Board {
             _ => 3600
         };
         self.score += cleared.iter().map(|row|
-            modifier*(self.height-row+1)
+            modifier*(BOARD_HEIGHT-row+1)
         ).collect::<Vec<_>>().iter().sum::<usize>();
         if self.score > self.highscore {
             self.highscore = self.score;
-            self.save_highscore()?;
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open("highscore")?;
+            file.write(format!("{}",self.highscore).as_bytes())?;
         }
         Ok(())
     }
@@ -490,32 +531,16 @@ impl Board {
         else {Ok(contents.parse::<usize>()?)}
     }
 
-    ///saves high score to "highscore"
-    fn save_highscore(&self) -> DynResult<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open("highscore")?;
-        file.write(format!("{}",self.highscore).as_bytes())?;
-        Ok(())
-    }
-
     ///resets board
     pub fn reset(&mut self) -> DynResult<()> {
-        *self = Self::new_custom(self.width, self.height)?;
+        *self = Self::new_board()?;
         Ok(())
     }
 
     ///checks if top row has set blocks
     fn check_game_over(&self) -> bool {
-        if !self.check_empty(0) {true}
+        if self.data[0].iter().any(|b| b.is_some()) {true}              //UNCHECKED INDEX
         else {false}
-    }
-
-    ///checks if row has any blocks
-    fn check_empty(&self, row: usize) -> bool {
-        if self.data[row].iter().any(|b| b.is_some()) {false}
-        else {true}
     }
 
     ///check if row is full
@@ -530,7 +555,7 @@ impl Board {
         self.data.insert(0, vec!(None;self.data[0].len()))              //UNCHECKED INDEX
     }
 
-    ///checks for filled rows and removes then
+    ///checks for filled rows and removes them
     fn update_rows(&mut self) -> Vec<usize> {
         let mut cleared = Vec::new();
         for row in 0..self.data.len() {
@@ -543,10 +568,10 @@ impl Board {
     }
 
     ///spawns a new piece
-    fn spawn_piece(&mut self) -> DynResult<()> {
-        let piece = Piece::gen_random(self.spawn)?;
-        if !self.check_collision(&piece) {
-            self.piece = piece;
+    fn next_piece(&mut self) -> DynResult<()> {
+        if !self.check_collision(&self.next_piece) {
+            self.piece = self.next_piece.clone();
+            self.next_piece = Piece::gen_random(self.spawn)?;
             self.update_shadow();
             Ok(())
         }
@@ -585,81 +610,62 @@ impl Board {
         false
     }
 
-    fn gen_backdrop(width: usize, height: usize) -> Sprite {
-        let width = width*BLOCK_SIZE;
-        let height = height*BLOCK_SIZE;
-        let mut backdrop = vec!(vec!(BOARD_COLOR;width);height);
-        backdrop.iter_mut().enumerate().for_each(|(yi,row)|
-            row.iter_mut().enumerate().for_each(|(xi, pixel)|
-                if (0..GRID_SIZE).contains(&(yi%BLOCK_SIZE))
-                || (0..GRID_SIZE).contains(&(xi%BLOCK_SIZE))
-                || (BLOCK_SIZE-GRID_SIZE..BLOCK_SIZE).contains(&(yi%BLOCK_SIZE))
-                || (BLOCK_SIZE-GRID_SIZE..BLOCK_SIZE).contains(&(xi%BLOCK_SIZE)) {
-                    *pixel = GRID_COLOR;
-                }
-            )
-        );
-        engine::sprite::Sprite::add(width, height, backdrop)
-    }
-
-    pub fn draw(&self, screen: &mut engine::drawing::Screen){
+    ///draws screen during game play
+    pub fn draw(&self, screen: &mut engine::drawing::Screen, speed: usize){
         screen.wipe();
         screen.draw_sprite(&self.backdrop, (0,0));
+        //draw set blocks
         for row in 0..self.data.len() {
             for block in 0..self.data[row].len() {
                 if let Some(sprite) = &self.data[row][block] {
-                    screen.draw_sprite(sprite, ((block*sprite.width) as isize, (row*sprite.height) as isize))
+                    screen.draw_sprite(sprite, (((block*sprite.width)+self.padding) as isize, (row*sprite.height) as isize))
                 }
             }
         }
-        for row in 0..self.shadow.data.len() {
-            for block in 0..self.shadow.data[row].len() {
-                if let Some(sprite) = &self.shadow.data[row][block] {
-                    screen.draw_sprite(
-                        sprite, 
-                        (
-                            self.shadow.location.0*sprite.width as isize + (block*sprite.width) as isize,
-                            self.shadow.location.1*sprite.height as isize + (row*sprite.height) as isize
+
+        let mut draw_piece = |piece: &Piece, location: (isize, isize), padding: usize| {
+            for row in 0..piece.data.len() {
+                for block in 0..piece.data[row].len() {
+                    if let Some(sprite) = &piece.data[row][block] {
+                        screen.draw_sprite(
+                            sprite, 
+                            (
+                                location.0*sprite.width as isize + ((block*sprite.width)+padding) as isize,
+                                location.1*sprite.height as isize + (row*sprite.height) as isize
+                            )
                         )
-                    )
+                    }
                 }
             }
+        };
+        draw_piece(&self.shadow, self.shadow.location, self.padding);
+        draw_piece(&self.piece, self.piece.location, self.padding);
+        draw_piece(&self.next_piece, NEXT_PIECE_LOCATION, 0);
+        if let Some(held) = &self.held_piece {
+            draw_piece(held, HELD_PIECE_LOCATION, 0);
         }
-        for row in 0..self.piece.data.len() {
-            for block in 0..self.piece.data[row].len() {
-                if let Some(sprite) = &self.piece.data[row][block] {
-                    screen.draw_sprite(
-                        sprite, 
-                        (
-                            self.piece.location.0*sprite.width as isize + (block*sprite.width) as isize,
-                            self.piece.location.1*sprite.height as isize + (row*sprite.height) as isize
-                        )
-                    )
-                }
-            }
-        }
+
+        screen.draw_text((9,191), &format!("{}",self.highscore), 32.0, &[255;4], drawing::DEBUG_FONT);
+        screen.draw_text((9,254), &format!("{}",self.score), 32.0, &[255;4], drawing::DEBUG_FONT);
+        screen.draw_text((9,318), &format!("{}",speed), 32.0, &[255;4], drawing::DEBUG_FONT);
     }
 
+    ///draws gameover screen
     pub fn draw_gameover(
         &self,
-        screen: &mut engine::drawing::Screen,
+        screen: &mut drawing::Screen,
         speed: usize,
         second: usize
     ) {
-        self.draw(screen);
+        self.draw(screen, speed);
 
         let message = "GAME OVER";
-        let center = 320_usize.checked_sub((message.len()*64)/2).unwrap_or(0);
-        screen.draw_text((center ,40), &message, 64.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
-    
-        let message = format!("Speed: {}",speed);
-        screen.draw_text((75,95), &message, 32.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+        screen.draw_text((195 ,40), &message, 64.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
+
         let message = format!("Score: {}",self.score);
-        screen.draw_text((75,115), &message, 32.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
-        let message = format!("Highscore: {}",self.highscore);
-        screen.draw_text((27,135), &message, 32.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+        screen.draw_text((225,115), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
     
         let message = format!("{}", second);
-        screen.draw_text((131,200), &message, 128.0, &GAME_OVER_COLOR, engine::drawing::DEBUG_FONT);
+        screen.draw_text((290,200), &message, 128.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
     }
 }

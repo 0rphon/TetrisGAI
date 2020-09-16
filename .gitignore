@@ -1,4 +1,4 @@
 /target
-event.log
 highscore
-tetris.log
+debug.log
+board.aseprite

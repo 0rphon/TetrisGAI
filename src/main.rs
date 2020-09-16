@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]         UNCOMMENT FOR RELEASE
 mod tetris;
 
 use dynerr::*;
@@ -8,10 +8,15 @@ use std::time::Duration;
 use std::thread::sleep;
 
 
+///the target fps
 const TARGET_FPS: u64 = 60;
-const START_SPEED: usize = 20;
+///start out doing updates every x frames
+const START_SPEED: usize = 30;
+///how many updates til you increase speed level
+const SPEED_LEVEL_DURATION: usize = 2500;
 const GAME_TITLE: &str = "Tetris";
-const GAME_OVER_PAUSE: usize= 5;
+const GAMEOVER_SECS: f32 = 5.0;
+const GAMEOVER_TICK_LEN: f32 = 0.25;
 
 
 
@@ -19,110 +24,145 @@ struct UpdateManager {
     frame: usize,
     speed: usize,
     start_speed: usize,
+    gameover: bool,
+    gameover_ticks: usize,
+    gameover_prog:  usize,
 }
 impl UpdateManager {
-    fn new(speed: usize) -> Self {
+    fn new() -> Self {
         Self {
             frame: 0,
-            speed,
-            start_speed: speed
+            speed: START_SPEED,
+            start_speed: START_SPEED,
+            gameover: false,
+            gameover_ticks: (GAMEOVER_SECS/GAMEOVER_TICK_LEN) as usize,
+            gameover_prog: 0
         }
     }
 
+    ///gets current speed
     fn get_speed(&self) -> usize {
         self.start_speed - self.speed
     }
 
-    fn reset(&mut self) {
-        self.frame = 0;
-        self.speed = self.start_speed;
+    ///checks if should update then updates
+    fn try_update(&mut self, board: &mut tetris::Board) -> DynResult<()> {
+        if !self.gameover {
+            self.frame+=1;
+            if self.frame % self.speed == 0 {
+                if self.frame >= SPEED_LEVEL_DURATION {
+                    self.speed = self.speed.checked_sub(1).unwrap_or(0);
+                    self.frame = 0;
+                }
+                if board.update()? {
+                    self.gameover = true;
+                }
+            }
+        }
+        Ok(())
     }
 
-    fn should_update(&mut self) -> bool {
-        self.frame+=1;
-        if self.frame % self.speed == 0 {
-            if self.frame >= 2000 {
-                self.speed = self.speed.checked_sub(1).unwrap_or(0);
-                self.frame = 0;
+    ///checks if gameover is currently happening
+    fn is_gameover(&mut self, board: &mut tetris::Board) -> DynResult<bool> {
+        if self.gameover {
+            if self.gameover_prog < self.gameover_ticks {
+                self.gameover_prog+=1;
+                Ok(true)
+            } else {
+                board.reset()?;
+                *self = Self::new();        
+                Ok(false)
             }
-            true
-        } else {false}
+        } else {Ok(false)}
+    }
+
+    ///gets seconds til end of gameover
+    fn sec_til_restart(&self) -> usize {
+        (GAMEOVER_SECS-(GAMEOVER_TICK_LEN*self.gameover_prog as f32)) as usize+1
     }
 }
 
 fn main() {
-    let mut board = check!(tetris::Board::new_standard());
-    let mut update_manager = UpdateManager::new(START_SPEED);
+    let mut board = check!(tetris::Board::new_board());
+    let mut update_manager = UpdateManager::new();
 
-    let mut screen = drawing::Screen::new(                                                              //create blank screen buffer
-        tetris::STANDARD_WIDTH*tetris::BLOCK_SIZE,
-        tetris::STANDARD_HEIGHT*tetris::BLOCK_SIZE
+    let mut screen = drawing::Screen::new(                                                              
+        board.width,
+        board.height
     );
 
-    let mut fpslock = game::FpsLock::create_lock(TARGET_FPS);                                           //create fpslock obj
+    let mut fpslock = game::FpsLock::create_lock(TARGET_FPS);                                           
 
-    let event_loop = game::EventLoop::new();                                                            //create event loop obj
-    let mut input = game::WinitInputHelper::new();                                                      //create input helper obj
-    let mut window = game::Window::init(                                                                //create window, and pixels buffer
+    let event_loop = game::EventLoop::new();                                                            
+    let mut input = game::WinitInputHelper::new();                                                      
+    let mut window = game::Window::init(                                                                
         GAME_TITLE,
-        tetris::STANDARD_WIDTH*tetris::BLOCK_SIZE,
-        tetris::STANDARD_HEIGHT*tetris::BLOCK_SIZE,
+        board.width,
+        board.height,
         &event_loop
     );
 
-    event_loop.run(move |event, _, control_flow| {                                                      //start game loop
-        fpslock.start_frame();                                                                          //set start of frame time
-        if let game::Event::RedrawRequested(_) = event {                                                //if redraw requested
+    event_loop.run(move |event, _, control_flow| {                                                      
+        fpslock.start_frame();                                                                          
+        if let game::Event::RedrawRequested(_) = event {                                                
 
             screen.wipe();
-            board.draw(&mut screen);
-            screen.draw_text((10,20), &format!("Speed: {}",update_manager.get_speed()), 16.0, &[255;4], drawing::DEBUG_FONT);
-            screen.draw_text((10,40), &format!("Score: {}",board.score), 16.0, &[255;4], drawing::DEBUG_FONT);
-            screen.draw_text((10,60), &format!("Highscore: {}",board.highscore), 16.0, &[255;4], drawing::DEBUG_FONT);
-
-
-            screen.flatten(window.pixels.get_frame());                                                  //flatten screen to 1d Vec<[u8;4]>
-            window.pixels.render().unwrap();                                                            //render
+            if check!(update_manager.is_gameover(&mut board)) {
+                board.draw_gameover(&mut screen, update_manager.get_speed(), update_manager.sec_til_restart());
+                sleep(Duration::from_secs_f32(GAMEOVER_TICK_LEN));
+            } else {
+                board.draw(&mut screen, update_manager.get_speed());
+            }
+            screen.flatten(window.pixels.get_frame());                                                  
+            window.pixels.render().unwrap();                                                            
 
             fpslock.end_frame();
         }
+        
+        //attempt at getting gamepad input. didnt work
+        //match event {
+        //    game::Event::DeviceEvent{device_id: id, event: _} => {println!("{:X?}",id)},
+        //    _ => {}
+        //};
 
-        if input.update(event) {                                                                        //handle input events on loop? not just on event
+        if input.update(&event) {                                                                       
 
-            if input.key_pressed(game::VirtualKeyCode::Escape) || input.quit() {                        //if esc pressed
-                *control_flow = game::ControlFlow::Exit;                                                //exit
+            if input.key_pressed(game::VirtualKeyCode::Escape) || input.quit() {                        
+                *control_flow = game::ControlFlow::Exit;                                                
                 return;
             }
 
-            if input.key_pressed(game::VirtualKeyCode::A)    {board.piece_left();}
-            if input.key_pressed(game::VirtualKeyCode::S)    {board.piece_down();}
-            if input.key_pressed(game::VirtualKeyCode::D)    {board.piece_right();}
-            if input.key_pressed(game::VirtualKeyCode::R)    {board.piece_rotate();}
-            if input.key_pressed(game::VirtualKeyCode::Space){board.piece_drop();}
-            //if input.key_pressed(game::VirtualKeyCode::F3) {println!("F3")}
+            if !update_manager.gameover {
+                if input.key_pressed(game::VirtualKeyCode::A)
+                || input.key_pressed(game::VirtualKeyCode::Left)    {board.piece_left();}
+
+                if input.key_pressed(game::VirtualKeyCode::S)
+                || input.key_pressed(game::VirtualKeyCode::Down)    {board.piece_down();}
+
+                if input.key_pressed(game::VirtualKeyCode::D)
+                || input.key_pressed(game::VirtualKeyCode::Right)   {board.piece_right();}
+
+                if input.key_pressed(game::VirtualKeyCode::R)
+                || input.key_pressed(game::VirtualKeyCode::X)    
+                || input.key_pressed(game::VirtualKeyCode::Up)      {board.piece_rotate();}
 
 
-            if let Some(factor) = input.scale_factor_changed() {                                        //if window dimensions changed
-                window.hidpi_factor = factor;                                                           //update hidpi_factor
+                if input.key_pressed(game::VirtualKeyCode::F)    
+                ||input.key_pressed(game::VirtualKeyCode::C)        {check!(board.piece_hold());}
+
+                if input.key_pressed(game::VirtualKeyCode::Space)   {board.piece_drop();}
             }
-            if let Some(size) = input.window_resized() {                                                //if window resized
-                window.pixels.resize(size.width, size.height);                                          //resize pixel aspect ratio
+
+            if let Some(factor) = input.scale_factor_changed() {                                        
+                window.hidpi_factor = factor;                                                           
+            }
+            if let Some(size) = input.window_resized() {                                                
+                window.pixels.resize(size.width, size.height);                                          
             }
 
             //handles updating
-            if update_manager.should_update() {
-                if check!(board.update()) {
-                    for i in (1..=GAME_OVER_PAUSE).rev() {
-                        board.draw_gameover(&mut screen, update_manager.get_speed(), i);
-                        screen.flatten(window.pixels.get_frame());
-                        check!(window.pixels.render());
-                        sleep(Duration::from_secs(1));
-                    }
-                    check!(board.reset());
-                    update_manager.reset();
-                }
-            }
-            window.window.request_redraw();                                                             //request frame redraw
+            check!(update_manager.try_update(&mut board));
+            window.window.request_redraw();                                                             
         }
     });
 }
