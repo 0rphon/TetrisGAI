@@ -116,7 +116,7 @@ impl error::Error for TetrisError {}
 ///blocks in piece
 type PieceData = Vec<Vec<Option<Sprite>>>;
 ///piece types
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum PieceType {I, O, T, S, Z, J, L}
 ///the piece object
 #[derive(Clone)]
@@ -571,7 +571,9 @@ impl Board {
     fn next_piece(&mut self) -> DynResult<()> {
         if !self.check_collision(&self.next_piece) {
             self.piece = self.next_piece.clone();
-            self.next_piece = Piece::gen_random(self.spawn)?;
+            while self.next_piece.type_ == self.piece.type_ {
+                self.next_piece = Piece::gen_random(self.spawn)?;
+            }
             self.update_shadow();
             Ok(())
         }
