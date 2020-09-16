@@ -483,7 +483,7 @@ impl Board {
                     dynmatch!(e,
                         type TetrisError {
                             arm TetrisError::SpawnError(_) => {
-                                log!(format!("{} Assuming game over", e), "debug.log");
+                                //log!(format!("{} Assuming game over", e), "debug.log");
                                 Ok(true)
                             },
                             _ => Err(e)
