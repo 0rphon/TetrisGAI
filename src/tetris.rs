@@ -288,6 +288,21 @@ impl Piece {
         r
     }
 
+    ///resets piece data to original template
+    fn reset_rotation(&mut self) {
+        self.data = {
+            match self.type_ {
+                PieceType::I => Self::gen_piece(fit!(I_DATA), I_COLOR),
+                PieceType::J => Self::gen_piece(fit!(J_DATA), J_COLOR),
+                PieceType::L => Self::gen_piece(fit!(L_DATA), L_COLOR),
+                PieceType::O => Self::gen_piece(fit!(O_DATA), O_COLOR),
+                PieceType::T => Self::gen_piece(fit!(T_DATA), T_COLOR),
+                PieceType::S => Self::gen_piece(fit!(S_DATA), S_COLOR),
+                PieceType::Z => Self::gen_piece(fit!(Z_DATA), Z_COLOR),
+            }
+        }
+    }
+
     ///gets a moved version of the piece
     fn get_up(&self) -> Self {
         let mut moved = self.clone();
@@ -411,6 +426,7 @@ impl Board {
         if !self.gameover {
             if self.piece.can_hold {
                 self.piece.location = self.spawn;
+                self.piece.reset_rotation();
                 if let Some(held) = self.held_piece.clone() {
                     self.held_piece = Some(self.piece.clone());
                     self.piece = held;
