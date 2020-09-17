@@ -304,15 +304,6 @@ impl Piece {
     }
 
     ///gets a moved version of the piece
-    fn get_up(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(y) = moved.location.1.checked_sub(1) {
-            moved.location.1 = y;
-        }
-        moved
-    }
-
-    ///gets a moved version of the piece
     fn get_down(&self) -> Self {
         let mut moved = self.clone();
         if let Some(y) = moved.location.1.checked_add(1) {
@@ -347,14 +338,8 @@ impl Piece {
 
 
 
-
-
-
-
 ///possible piece movements
-#[allow(unused)]
 pub enum Move {
-    Up,
     Down,
     Left,
     Right,
@@ -455,7 +440,6 @@ impl Board {
     pub fn move_piece(&mut self, direction: Move) -> bool {
         let moved = {
             match direction {
-                Move::Up    => self.piece.get_up(),
                 Move::Down  => self.piece.get_down(),
                 Move::Left  => self.piece.get_left(),
                 Move::Right => self.piece.get_right(),
@@ -484,14 +468,14 @@ impl Board {
         self.shadow = shadow;
     }
 
-    ///attempts to update
-    pub fn try_update(&mut self) -> DynResult<()> {
+    ///attempts to update. returns true if update occurred
+    pub fn try_update(&mut self) -> DynResult<bool> {
         self.frame+=1;
         if !self.gameover
         && self.frame%self.get_speed() == 0 {
             self.update()?;
-        }
-        Ok(())
+            Ok(true)
+        } else {Ok(false)}
     }
 
     ///gets the current frame delay based on level
@@ -674,6 +658,73 @@ impl Board {
             let message = format!("SCORE: {}",self.score);
             screen.draw_text((225,115), &message, 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
             screen.draw_text((215,200), "SPACE TO RESTART", 32.0, &GAME_OVER_COLOR, drawing::DEBUG_FONT);
+        }
+    }
+
+    pub fn get_board(&self) -> BoardData {
+        BoardData::get(&self)
+    }
+}
+
+
+
+
+
+
+
+
+
+pub struct StrippedPiece {
+    pub location: (isize, isize),
+    pub data: Vec<Vec<bool>>,
+    pub can_hold: bool,
+}
+
+impl StrippedPiece {
+    fn get(piece: &Piece) -> Self {
+        Self {
+            location: piece.location,
+            data: {
+                piece.data.iter().map(|row| 
+                    row.iter().map(|block| 
+                        block.is_some()
+                    ).collect()
+                ).collect()
+            },
+            can_hold: piece.can_hold,
+        }
+    }
+}
+
+
+
+///the data returned to AI from get_board()
+pub struct BoardData {
+    pub piece: StrippedPiece,
+    pub next_piece: StrippedPiece,
+    pub held_piece: Option<StrippedPiece>,
+    pub data:   Vec<Vec<bool>>,
+    pub score: usize,
+    pub gameover: bool,
+}
+
+impl BoardData {
+    fn get(board: &Board) -> Self {
+        Self {
+            piece: StrippedPiece::get(&board.piece),
+            next_piece: StrippedPiece::get(&board.next_piece),
+            held_piece: if let Some(held) = &board.held_piece {
+                Some(StrippedPiece::get(held))
+            } else {None},
+            data: {
+                board.data.iter().map(|row|
+                    row.iter().map(|block|
+                        block.is_some()
+                    ).collect()
+                ).collect()
+            },
+            score: board.score,
+            gameover: board.gameover,
         }
     }
 }
