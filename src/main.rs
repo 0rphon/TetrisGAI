@@ -12,20 +12,6 @@ use std::env::args;
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
-
-fn _main() {
-    //match args().nth(1) {
-    //    Some(arg) if arg.to_lowercase() == "--ai" => auto(),
-    //    Some(_) => panic!("Unknown option. try \"--ai\""),
-    //    None => manual(),
-    //}
-}
-
-
-
-
-
-
 fn main() {
     let mut board = check!(Board::new_board());
 
@@ -65,12 +51,6 @@ fn main() {
 
             fpslock.end_frame();
         }
-
-        //attempt at getting gamepad input. didnt work
-        //match event {
-        //    game::Event::DeviceEvent{device_id: id, event: _} => {println!("{:X?}",id)},
-        //    _ => {}
-        //};
 
         if input.update(&event) {
 
@@ -138,85 +118,6 @@ fn main() {
             //handles updating
             if check!(board.try_update()) && ai_radio.is_some(){
                 check!(ai_radio.as_ref().unwrap().send_board(board.get_board()));
-            }
-            window.window.request_redraw();
-        }
-    });
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-fn auto() {
-    let mut board = check!(Board::new_board());
-    let mut ai_radio = ai::start();
-
-    let mut fpslock = game::FpsLock::create_lock(TARGET_FPS);
-    let mut screen = drawing::Screen::new(
-        board.dimensions.0,
-        board.dimensions.1
-    );
-    let event_loop = game::EventLoop::new();
-    let mut input = game::WinitInputHelper::new();
-    let mut window = game::Window::init(
-        GAME_TITLE,
-        board.dimensions.0,
-        board.dimensions.1,
-        &event_loop
-    );
-
-    event_loop.run(move |event, _, control_flow| {
-        fpslock.start_frame();
-        if let game::Event::RedrawRequested(_) = event {
-            screen.wipe();
-            board.draw(&mut screen);
-            screen.draw_text((0,0), fpslock.get_fps(), 16.0, &[0xFF;4], drawing::DEBUG_FONT);
-            screen.flatten(window.pixels.get_frame());
-            window.pixels.render().unwrap();
-            fpslock.end_frame();
-        }
-
-        if input.update(&event) {
-
-            if let Some(ai_input) = check!(ai_radio.get_input()) {
-                match ai_input {
-                    ai::Move::Down      => {board.move_piece(Move::Down);},
-                    ai::Move::Left      => {board.move_piece(Move::Left);},
-                    ai::Move::Right     => {board.move_piece(Move::Right);},
-                    ai::Move::Rotate    => {board.move_piece(Move::Rotate);}
-                    ai::Move::Drop      => {board.move_piece(Move::Drop);},
-                    ai::Move::Hold      => {check!(board.piece_hold());},
-                    ai::Move::Restart   => check!(board.reset())
-                }
-            }
-            
-            if input.key_pressed(game::VirtualKeyCode::Escape) || input.quit() {
-                *control_flow = game::ControlFlow::Exit;
-                check!(ai_radio.join());
-                return;
-            }
-            if let Some(factor) = input.scale_factor_changed() {
-                window.hidpi_factor = factor;
-            }
-            if let Some(size) = input.window_resized() {
-                window.pixels.resize(size.width, size.height);
-            }
-
-            //handles updating
-            if check!(board.try_update()) {
-                check!(ai_radio.send_board(board.get_board()));
             }
             window.window.request_redraw();
         }
