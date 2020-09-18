@@ -661,8 +661,8 @@ impl Board {
         }
     }
 
-    pub fn get_board(&self) -> BoardData {
-        BoardData::get(&self)
+    pub fn get_board(&self) -> StrippedBoard {
+        StrippedBoard::get(&self)
     }
 }
 
@@ -671,12 +671,13 @@ impl Board {
 
 
 
+///blocks have been replaced with bools
+pub type StrippedData = Vec<Vec<bool>>;
 
-
-
+#[derive(Clone)]
 pub struct StrippedPiece {
     pub location: (isize, isize),
-    pub data: Vec<Vec<bool>>,
+    pub data: StrippedData,
     pub can_hold: bool,
 }
 
@@ -697,18 +698,17 @@ impl StrippedPiece {
 }
 
 
-
 ///the data returned to AI from get_board()
-pub struct BoardData {
+pub struct StrippedBoard {
     pub piece: StrippedPiece,
     pub next_piece: StrippedPiece,
     pub held_piece: Option<StrippedPiece>,
-    pub data:   Vec<Vec<bool>>,
+    pub data:   StrippedData,
     pub score: usize,
     pub gameover: bool,
 }
 
-impl BoardData {
+impl StrippedBoard {
     fn get(board: &Board) -> Self {
         Self {
             piece: StrippedPiece::get(&board.piece),

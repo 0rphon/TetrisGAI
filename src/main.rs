@@ -6,8 +6,6 @@ mod ai;
 use dynerr::*;
 use engine::{drawing, game};
 
-use std::env::args;
-
 ///the target fps
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
@@ -15,13 +13,7 @@ const GAME_TITLE: &str = "Tetris";
 fn main() {
     let mut board = check!(Board::new_board());
 
-    let mut ai_radio = {
-        match args().nth(1) {
-            Some(arg) if arg.to_lowercase() == "--ai" => Some(ai::start()),
-            Some(_) => panic!("Unknown option. try \"--ai\""),
-            None => None,
-        }
-    };
+    let mut ai_radio = None;
 
     let mut screen = drawing::Screen::new(
         board.dimensions.0,
@@ -54,16 +46,25 @@ fn main() {
 
         if input.update(&event) {
 
+            if input.key_pressed(game::VirtualKeyCode::P) {
+                ai_radio = {
+                    match ai_radio {
+                        Some(_) => None,
+                        None => Some(ai::start()),
+                    }
+                }
+            }
+
             if ai_radio.is_some() {
                 if let Some(ai_input) = check!(ai_radio.as_ref().unwrap().get_input()) {
                     match ai_input {
-                        ai::Move::Down      => {board.move_piece(Move::Down);},
+                        //ai::Move::Down      => {board.move_piece(Move::Down);},
                         ai::Move::Left      => {board.move_piece(Move::Left);},
                         ai::Move::Right     => {board.move_piece(Move::Right);},
                         ai::Move::Rotate    => {board.move_piece(Move::Rotate);}
                         ai::Move::Drop      => {board.move_piece(Move::Drop);},
                         ai::Move::Hold      => {check!(board.piece_hold());},
-                        ai::Move::Restart   => check!(board.reset())
+                        ai::Move::Restart   => {}//check!(board.reset())
                     }
                 }
             } else {

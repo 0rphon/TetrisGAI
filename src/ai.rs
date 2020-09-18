@@ -5,8 +5,343 @@ use dynerr::*;
 use std::thread;
 use std::sync::{Arc, Mutex, mpsc, PoisonError, MutexGuard};
 
+//POSITIVES
+//below bad, this or above good
+const MIN_CLEARED_ROWS: usize           = 3;        //0-4
+const CLEARED_ROWS_IMPORTANCE: f32      = 0.50;
+const PIECE_DEPTH_IMPORTANCE: f32       = 0.25;
+
+//NEGATIVES
+const MAX_HEIGHT_IMPORTANCE: f32        = 0.75;
+const AVG_HEIGHT_IMPORTANCE: f32        = 0.0;
+const HEIGHT_VARIATION_IMPORTANCE: f32  = 0.50;
+const CURRENT_HOLES_IMPORTANCE: f32     = 3.5;
+const MAX_PILLAR_HEIGHT: usize          = 2;        //0-4
+const CURRENT_PILLARS_IMPORTANCE: f32   = 0.75;
+
+
+
+
+///possible piece movements
+#[derive(Debug)]
+pub enum Move {
+    //Down,
+    Left,
+    Right,
+    Rotate,
+    Drop,
+    Hold,
+    Restart
+}
+
+///current piece rotation relative to its start
+#[derive(Clone, Debug)]
+enum Rotation {
+    North,
+    South,
+    East,
+    West,
+}
+
+#[derive(Debug)]
+struct MoveData {
+    location: (isize, isize),
+    is_held: bool,
+    rotation: Rotation,
+    board: tetris::StrippedData,
+    score: f32,
+    debug_scores: Vec<f32>,
+}
+
+impl MoveData {
+
+    fn generate_data(mut board: tetris::StrippedData, piece: tetris::StrippedPiece, is_held: bool, rotation: Rotation) -> Self {
+        for row in 0..piece.data.len() {
+            for column in 0..piece.data[row].len() {
+                if piece.data[row][column] {
+                    if let Some(y) = board.get_mut((piece.location.1+row as isize) as usize) {                      //RELIES ON USIZE WRAPPING
+                        if let Some(x) = y.get_mut((piece.location.0+column as isize) as usize) {                   //RELIES ON USIZE WRAPPING
+                            *x = true
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut move_data = {
+            Self {
+                location: piece.location,
+                is_held,
+                rotation,
+                board,
+                score: 0.0,
+                debug_scores: vec!(0.0),
+            }
+        };
+
+        move_data.calc_score();
+        move_data
+    }
+
+    //need to have const floats as modifiers for importance
+    ///calculates the move score. the higher the score the better
+    fn calc_score(&mut self) {
+        let cleared_rows     = match self.calc_cleared() {
+            i if i == 0.0 => 0.0, 
+            i if i < MIN_CLEARED_ROWS as f32 => (i*CLEARED_ROWS_IMPORTANCE)*-1.0, 
+            i => (i-MIN_CLEARED_ROWS as f32+1.0)*CLEARED_ROWS_IMPORTANCE,
+        };
+        let max_height       = self.calc_max_height()*MAX_HEIGHT_IMPORTANCE;
+        let avg_height       = self.calc_avg_height()*AVG_HEIGHT_IMPORTANCE;
+        let height_variation = self.calc_height_variation()*HEIGHT_VARIATION_IMPORTANCE;
+        let current_holes    = self.calc_holes()*CURRENT_HOLES_IMPORTANCE;
+        let current_pillars  = self.calc_pillars()*CURRENT_PILLARS_IMPORTANCE;
+        let piece_depth      = self.location.1 as f32*PIECE_DEPTH_IMPORTANCE;                                           //y location should always be positive
+        self.debug_scores = vec!(cleared_rows, piece_depth, max_height, avg_height, height_variation, current_holes, current_pillars);
+        self.score = cleared_rows+piece_depth-max_height-avg_height-height_variation-current_holes-current_pillars;
+    }
+
+    ///returns how many empty rows from top
+    fn calc_max_height(&self) -> f32 {
+        for y in 0..self.board.len() {
+            for x in 0..self.board[y].len() {
+                if self.board[y][x] {
+                    return (self.board.len()-y) as f32
+                }
+            }
+        }
+        0.0
+    }
+
+    ///returns average empty rows from top
+    fn calc_avg_height(&self) -> f32 {
+        let mut heights = Vec::new();
+        for x in 0..self.board[0].len(){                                //UNCHECKED INDEX
+            for y in 0..self.board.len() {
+                if self.board[y][x] {
+                    heights.push(self.board.len()-y);
+                    break
+                }
+            }
+        }
+        heights.iter().sum::<usize>() as f32/heights.len() as f32
+    }
+
+    ///difference between lowest and tallest columns
+    fn calc_height_variation(&self) -> f32 {
+        let mut heights = Vec::new();
+        for x in 0..self.board[0].len(){                                //UNCHECKED INDEX
+            for y in 0..self.board.len() {
+                if self.board[y][x] {
+                    heights.push(self.board.len()-y);
+                    break
+                }
+            }
+        }
+        heights.sort();
+        (heights.last().unwrap_or(&self.board.len())-heights.first().unwrap_or(&0)) as f32
+    }
+
+    ///how many empty spaces have blocks over them
+    fn calc_holes(&self) -> f32 {
+        let mut holes = 0;
+        for x in 0..self.board[0].len() {                               //UNCHECKED INDEX
+            let mut under = false;
+            for y in 0..self.board.len() {
+                if self.board[y][x] {under = true}
+                else if !self.board[y][x] 
+                && under {holes+=1}
+            }
+        }
+        holes as f32
+    }
+
+    ///each additional block for pillars over 2 blocks
+    fn calc_pillars(&self) -> f32 {
+        let mut pillars = 0;
+        for x in 0..self.board[0].len(){                                //UNCHECKED INDEX
+            let mut pillar_height = 0;
+            for y in 0..self.board.len() {
+                if !self.board[y][x]
+                && *self.board[y].get(x.checked_sub(1).unwrap_or(99)).unwrap_or(&true)      //BAD SOLUTION
+                && *self.board[y].get(x+1).unwrap_or(&true) {
+                    pillar_height+=1;
+                }
+            }
+            if pillar_height > MAX_PILLAR_HEIGHT {pillars+=pillar_height-MAX_PILLAR_HEIGHT}
+        }
+        pillars as f32
+    }
+
+    //returns how many rows cleared
+    fn calc_cleared(&self) -> f32 {
+        let mut cleared = 0;
+        for y in &self.board {
+            if y.iter().all(|b| *b) {
+                cleared+=1;
+            }
+        }
+        cleared as f32
+    }
+
+    fn gen_input(&self, board: &tetris::StrippedBoard) -> Vec<Move>{
+        let mut moves = Vec::new();
+        let piece = {
+            if self.is_held {
+                moves.push(Move::Hold);
+                if let Some(held) = &board.held_piece {
+                    held
+                } else {&board.next_piece}
+            } else {&board.piece}
+        };
+        //LOGGING##################################################################################################
+        log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.score), "ai.log");   //#
+        let mut scores = String::new();                                                                         //#
+        for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
+        log!(scores, "ai.log");                                                                                 //#
+        for row in &self.board {                                                                                //#
+            let mut r = String::new();                                                                          //#
+            for column in row {                                                                                 //#
+                if *column {                                                                                    //#
+                    r.push_str("[X]")                                                                           //#
+                } else {r.push_str("[ ]")}                                                                      //#
+            }                                                                                                   //#
+            log!(r, "ai.log");                                                                                  //#
+        }                                                                                                       //#
+        //#########################################################################################################
+        //LOGGING######################################################################################
+        log!(format!("current: {:?}", piece.location), "ai.log");                                   //#
+        for row in &piece.data {                                                                    //#
+            let mut r = String::new();                                                              //#
+            for column in row {                                                                     //#
+                if *column {                                                                        //#
+                    r.push_str("[X]")                                                               //#
+                } else {r.push_str("[ ]")}                                                          //#
+            }                                                                                       //#
+            log!(r, "ai.log");                                                                      //#
+        }                                                                                           //#
+        //#############################################################################################
+        let roto_times = {
+            match self.rotation {
+                Rotation::North => 0,
+                Rotation::West  => 1,
+                Rotation::South => 2,
+                Rotation::East  => 3,
+            }
+        };
+        for _ in 0..roto_times {moves.push(Move::Rotate)}
+        let distance = self.location.0 - piece.location.0;
+        if distance > 0 {
+            for _ in 0..distance {moves.push(Move::Right)}
+        } else if distance < 0 {
+            for _ in distance..0 {moves.push(Move::Left)}
+        }
+        moves.push(Move::Drop);
+        //LOGGING##########################################################
+        log!(format!("Moves {:?}\n", moves), "ai.log");                 //#
+        //#################################################################
+        moves
+    }
+}
+
+fn rotate_piece(piece: &mut tetris::StrippedPiece) {
+    let height = piece.data.len();
+    let width = piece.data[0].len();                    //UNCHECKED INDEX
+    let original = piece.data.clone();
+    for row in 0..height {
+        for column in 0..width {
+            piece.data[row][column] = original[column][width-row-1];
+        }
+    }
+}
+
+///checks piece for collision on board
+fn check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) -> bool {
+    for row in 0..piece.data.len() {
+        for column in 0..piece.data[row].len() {
+            if piece.data[row][column] {
+                if let Some(y) = board.get((piece.location.1+row as isize) as usize) {                      //RELIES ON USIZE WRAPPING
+                    if let Some(x) = y.get((piece.location.0+column as isize) as usize) {                //RELIES ON USIZE WRAPPING
+                        if *x {return true}
+                    } else {return true}
+                } else {return true}
+            }
+        }
+    }
+    false
+}
+
+///get all possible moves for a piece
+fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::StrippedPiece, is_held: bool) -> Vec<MoveData> {
+    let mut possible_moves =  Vec::new();
+    let original_location = piece.location;
+    for rotation in [Rotation::North, Rotation::East, Rotation::South, Rotation::West].iter() {
+        //move to left edge
+        while !check_collision(board, &piece) {
+            piece.location.0-=1;
+        }
+        piece.location.0+=1;
+        //while piece in valid location
+        while !check_collision(board, &piece) {
+            //drop
+            while !check_collision(board, &piece) {
+                piece.location.1+=1;
+            }
+            piece.location.1-=1;
+            //add move
+            possible_moves.push(MoveData::generate_data(board.clone(), piece.clone(), is_held, rotation.clone()));
+            //reset piece and move over one
+            piece.location.1 = original_location.1;
+            piece.location.0 += 1;
+        }
+        piece.location = original_location;
+        rotate_piece(&mut piece);
+    }
+    possible_moves
+}
+
+///get all possible moves for current board
+fn get_possible_moves(board: &tetris::StrippedBoard) -> Vec<MoveData> {
+    let mut possible_moves = Vec::new();
+    possible_moves.extend(get_moves_for_piece(&board.data, board.piece.clone(), false));
+    if board.piece.can_hold {
+        if let Some(held) = &board.held_piece {
+            possible_moves.extend(get_moves_for_piece(&board.data, held.clone(), true));
+        } else {
+            possible_moves.extend(get_moves_for_piece(&board.data, board.next_piece.clone(), true));
+        }
+    }
+    possible_moves
+}
+
+
+///takes board. gets all possible moves. finds best move. generates input
+fn get_input_move(board: tetris::StrippedBoard) -> Vec<Move> {
+    let possible_moves = get_possible_moves(&board);
+    if possible_moves.len() != 0 {
+        let best_move = {
+            let mut best = &possible_moves[0];
+            for move_data in &possible_moves {
+                if move_data.score > best.score {best = &move_data}
+            }
+            best
+        };
+        best_move.gen_input(&board)
+    } else {vec!(Move::Restart)}
+}
+
+
+
+
+
+
+
+
+
+
+
 pub struct Packet {
-    board: Option<tetris::BoardData>,
+    board: Option<tetris::StrippedBoard>,
     exit: bool,
 }
 
@@ -25,7 +360,7 @@ impl MainRadio {
     }
 
     ///sends the board to ai
-    pub fn send_board(&self, board: tetris::BoardData) -> DynResult<()> {
+    pub fn send_board(&self, board: tetris::StrippedBoard) -> DynResult<()> {
         self.send(Packet{board: Some(board), exit: false})
     }
 
@@ -60,54 +395,12 @@ impl AiRadio {
     }
 }
 
-
-
-
-///possible piece movements
-pub enum Move {
-    Down,
-    Left,
-    Right,
-    Rotate,
-    Drop,
-    Hold,
-    Restart
-}
-///current piece rotation relative to its start
-enum Rotation {
-    North,
-    South,
-    East,
-    West,
-}
-
-use rand::Rng;
-///TEMP gens random moves
-fn random(len: usize) -> Vec<Move> {
-    let mut moves = Vec::new();
-    for _ in 0..len {
-        moves.push(
-            match rand::thread_rng().gen_range(0, 6) {
-                0 => Move::Down,
-                1 => Move::Left,
-                2 => Move::Right,
-                3 => Move::Rotate,
-                4 => Move::Drop,
-                5 => Move::Hold,
-                6 => Move::Restart,
-                i => panic!("bad num {}", i),
-            }
-        )
-    }
-    moves
-}
-
 ///for every packet received calculates moves
 fn ai_loop(radio: AiRadio) {
     for packet in &radio.rx {
         if let Some(board) = packet.board {
             if !board.gameover {
-                check!(radio.set_input(random(10)));
+                check!(radio.set_input(get_input_move(board)));
             } else {check!(radio.set_input(vec!(Move::Restart)))}
         } else if packet.exit {break}
     }
@@ -115,6 +408,7 @@ fn ai_loop(radio: AiRadio) {
 
 ///starts the AI thread
 pub fn start() -> MainRadio {
+    clean!("ai.log");
     let input = Arc::new(Mutex::new(Vec::new()));
     let (tx, rx) = mpsc::channel();
     let ai_radio = AiRadio {input: Arc::clone(&input), rx};

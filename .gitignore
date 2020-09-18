@@ -1,6 +1,6 @@
 /target
 highscore
-debug.log
+*.log
 board.aseprite
 tetris/
 .vscode
