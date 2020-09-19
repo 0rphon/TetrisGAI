@@ -2,15 +2,38 @@
 mod tetris;
 use tetris::{Board, Move};
 mod ai;
+mod train;
 
 use dynerr::*;
 use engine::{drawing, game};
 
+use std::env::args;
+use std::process::exit;
 ///the target fps
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
 fn main() {
+
+    if let Some(arg) = args().nth(1) {
+        if arg.to_lowercase() == "--train" {
+            check!(train::train());
+            exit(0);
+        }
+    }
+
+    let parameters = ai::AiParameters {
+        min_cleared_rows:               3,
+        cleared_rows_importance:        0.50,
+        piece_depth_importance:         0.25,
+        max_height_importance:          0.75,
+        avg_height_importance:          0.0,
+        height_variation_importance:    0.5,
+        current_holes_importance:       3.5,
+        max_pillar_height:              2,
+        current_pillars_importance:     0.75,
+    };
+
     let mut board = check!(Board::new_board());
 
     let mut ai_radio = None;
@@ -37,7 +60,9 @@ fn main() {
 
             screen.wipe();
             board.draw(&mut screen);
-            //screen.draw_text((0,0), fpslock.get_fps(), 16.0, &[0xFF;4], drawing::DEBUG_FONT);
+            if ai_radio.is_some() {
+                screen.draw_text((0,0), fpslock.get_fps(), 16.0, &[0xFF;4], drawing::DEBUG_FONT);
+            }
             screen.flatten(window.pixels.get_frame());
             window.pixels.render().unwrap();
 
@@ -50,7 +75,7 @@ fn main() {
                 ai_radio = {
                     match ai_radio {
                         Some(_) => None,
-                        None => Some(ai::start()),
+                        None => Some(ai::start(&parameters)),
                     }
                 }
             }
@@ -94,12 +119,11 @@ fn main() {
     
                 if input.key_pressed(game::VirtualKeyCode::Space)
                 {check!(board.piece_drop());}
-
-                if input.key_pressed(game::VirtualKeyCode::Return)
-                || input.key_pressed(game::VirtualKeyCode::NumpadEnter)
-                || input.key_pressed(game::VirtualKeyCode::Space) && board.gameover
-                    {check!(board.reset())}
             }
+            if input.key_pressed(game::VirtualKeyCode::Return)
+            || input.key_pressed(game::VirtualKeyCode::NumpadEnter)
+            || input.key_pressed(game::VirtualKeyCode::Space) && board.gameover
+                {check!(board.reset())}
 
             if input.key_pressed(game::VirtualKeyCode::Escape) || input.quit() {
                 *control_flow = game::ControlFlow::Exit;

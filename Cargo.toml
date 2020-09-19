@@ -11,6 +11,11 @@ dynerr = "0.1.23"
 #dynerr = {git="https://github.com/0rphon/dynerr"}
 engine = {git = "https://github.com/0rphon/Untitled_Engine"}
 rand = "0.7.3"
+threadpool = "1.8.1"
 
-[profile.dev]
-opt-level = 3
+[profile.release]
+lto="fat"
+codegen-units=1
+panic="abort"
+#set RUST_FLAGS -Ctarget-cpu=native
+#cargo run --release -- --train

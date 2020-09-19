@@ -705,6 +705,7 @@ pub struct StrippedBoard {
     pub held_piece: Option<StrippedPiece>,
     pub data:   StrippedData,
     pub score: usize,
+    pub level: usize,
     pub gameover: bool,
 }
 
@@ -724,6 +725,7 @@ impl StrippedBoard {
                 ).collect()
             },
             score: board.score,
+            level: board.level,
             gameover: board.gameover,
         }
     }

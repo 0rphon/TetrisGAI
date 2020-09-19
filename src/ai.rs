@@ -2,28 +2,47 @@ use crate::tetris;
 
 use dynerr::*;
 
-use std::thread;
+use std::{thread, fmt};
+use std::cmp::Ordering;
 use std::sync::{Arc, Mutex, mpsc, PoisonError, MutexGuard};
 
-//POSITIVES
-//below bad, this or above good
-const MIN_CLEARED_ROWS: usize           = 3;        //0-4
-const CLEARED_ROWS_IMPORTANCE: f32      = 0.50;
-const PIECE_DEPTH_IMPORTANCE: f32       = 0.25;
 
-//NEGATIVES
-const MAX_HEIGHT_IMPORTANCE: f32        = 0.75;
-const AVG_HEIGHT_IMPORTANCE: f32        = 0.0;
-const HEIGHT_VARIATION_IMPORTANCE: f32  = 0.50;
-const CURRENT_HOLES_IMPORTANCE: f32     = 3.5;
-const MAX_PILLAR_HEIGHT: usize          = 2;        //0-4
-const CURRENT_PILLARS_IMPORTANCE: f32   = 0.75;
+#[derive(Clone)]
+pub struct AiParameters {
+    //positives
+    ///min number of rows to reward clearing
+    pub min_cleared_rows: usize,
+    pub cleared_rows_importance: f32,
+    pub piece_depth_importance: f32,
+    //negatives
+    pub max_height_importance: f32,
+    pub avg_height_importance: f32,
+    pub height_variation_importance: f32,
+    pub current_holes_importance: f32,
+    pub max_pillar_height: usize,
+    pub current_pillars_importance: f32,
+}
 
-
+impl fmt::Display for AiParameters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, 
+            "{} : {} : {} : {} : {} : {} : {} : {} : {}", 
+            self.min_cleared_rows, 
+            self.cleared_rows_importance,
+            self.piece_depth_importance,
+            self.max_height_importance,
+            self.avg_height_importance,
+            self.height_variation_importance,
+            self.current_holes_importance,
+            self.max_pillar_height,
+            self.current_pillars_importance
+        )
+    }
+}
 
 
 ///possible piece movements
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Move {
     //Down,
     Left,
@@ -55,7 +74,7 @@ struct MoveData {
 
 impl MoveData {
 
-    fn generate_data(mut board: tetris::StrippedData, piece: tetris::StrippedPiece, is_held: bool, rotation: Rotation) -> Self {
+    fn generate_data(mut board: tetris::StrippedData, piece: tetris::StrippedPiece, is_held: bool, rotation: Rotation, parameters: &AiParameters) -> Self {
         for row in 0..piece.data.len() {
             for column in 0..piece.data[row].len() {
                 if piece.data[row][column] {
@@ -75,28 +94,28 @@ impl MoveData {
                 rotation,
                 board,
                 score: 0.0,
-                debug_scores: vec!(0.0),
+                debug_scores: vec!(),
             }
         };
 
-        move_data.calc_score();
+        move_data.calc_score(parameters);
         move_data
     }
 
     //need to have const floats as modifiers for importance
     ///calculates the move score. the higher the score the better
-    fn calc_score(&mut self) {
+    fn calc_score(&mut self, parameters: &AiParameters) {
         let cleared_rows     = match self.calc_cleared() {
             i if i == 0.0 => 0.0, 
-            i if i < MIN_CLEARED_ROWS as f32 => (i*CLEARED_ROWS_IMPORTANCE)*-1.0, 
-            i => (i-MIN_CLEARED_ROWS as f32+1.0)*CLEARED_ROWS_IMPORTANCE,
+            i if i < parameters.min_cleared_rows as f32 => (i*parameters.cleared_rows_importance)*-1.0, 
+            i => (i-parameters.min_cleared_rows as f32+1.0)*parameters.cleared_rows_importance,
         };
-        let max_height       = self.calc_max_height()*MAX_HEIGHT_IMPORTANCE;
-        let avg_height       = self.calc_avg_height()*AVG_HEIGHT_IMPORTANCE;
-        let height_variation = self.calc_height_variation()*HEIGHT_VARIATION_IMPORTANCE;
-        let current_holes    = self.calc_holes()*CURRENT_HOLES_IMPORTANCE;
-        let current_pillars  = self.calc_pillars()*CURRENT_PILLARS_IMPORTANCE;
-        let piece_depth      = self.location.1 as f32*PIECE_DEPTH_IMPORTANCE;                                           //y location should always be positive
+        let max_height       = self.calc_max_height()*parameters.max_height_importance;
+        let avg_height       = self.calc_avg_height()*parameters.avg_height_importance;
+        let height_variation = self.calc_height_variation()*parameters.height_variation_importance;
+        let current_holes    = self.calc_holes()*parameters.current_holes_importance;
+        let current_pillars  = self.calc_pillars(parameters.max_pillar_height)*parameters.current_pillars_importance;
+        let piece_depth      = self.location.1 as f32*parameters.piece_depth_importance;                                           //y location should always be positive
         self.debug_scores = vec!(cleared_rows, piece_depth, max_height, avg_height, height_variation, current_holes, current_pillars);
         self.score = cleared_rows+piece_depth-max_height-avg_height-height_variation-current_holes-current_pillars;
     }
@@ -157,9 +176,9 @@ impl MoveData {
     }
 
     ///each additional block for pillars over 2 blocks
-    fn calc_pillars(&self) -> f32 {
+    fn calc_pillars(&self, max_pillar_height: usize) -> f32 {
         let mut pillars = 0;
-        for x in 0..self.board[0].len(){                                //UNCHECKED INDEX
+        for x in 0..self.board[0].len(){                                                    //UNCHECKED INDEX
             let mut pillar_height = 0;
             for y in 0..self.board.len() {
                 if !self.board[y][x]
@@ -168,7 +187,7 @@ impl MoveData {
                     pillar_height+=1;
                 }
             }
-            if pillar_height > MAX_PILLAR_HEIGHT {pillars+=pillar_height-MAX_PILLAR_HEIGHT}
+            if pillar_height > max_pillar_height {pillars+=pillar_height-max_pillar_height}
         }
         pillars as f32
     }
@@ -194,33 +213,33 @@ impl MoveData {
                 } else {&board.next_piece}
             } else {&board.piece}
         };
-        //LOGGING##################################################################################################
-        log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.score), "ai.log");   //#
-        let mut scores = String::new();                                                                         //#
-        for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
-        log!(scores, "ai.log");                                                                                 //#
-        for row in &self.board {                                                                                //#
-            let mut r = String::new();                                                                          //#
-            for column in row {                                                                                 //#
-                if *column {                                                                                    //#
-                    r.push_str("[X]")                                                                           //#
-                } else {r.push_str("[ ]")}                                                                      //#
-            }                                                                                                   //#
-            log!(r, "ai.log");                                                                                  //#
-        }                                                                                                       //#
-        //#########################################################################################################
-        //LOGGING######################################################################################
-        log!(format!("current: {:?}", piece.location), "ai.log");                                   //#
-        for row in &piece.data {                                                                    //#
-            let mut r = String::new();                                                              //#
-            for column in row {                                                                     //#
-                if *column {                                                                        //#
-                    r.push_str("[X]")                                                               //#
-                } else {r.push_str("[ ]")}                                                          //#
-            }                                                                                       //#
-            log!(r, "ai.log");                                                                      //#
-        }                                                                                           //#
-        //#############################################################################################
+        ////LOGGING##################################################################################################
+        //log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.score), "ai.log");   //#
+        //let mut scores = String::new();                                                                         //#
+        //for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
+        //log!(scores, "ai.log");                                                                                 //#
+        //for row in &self.board {                                                                                //#
+        //    let mut r = String::new();                                                                          //#
+        //    for column in row {                                                                                 //#
+        //        if *column {                                                                                    //#
+        //            r.push_str("[X]")                                                                           //#
+        //        } else {r.push_str("[ ]")}                                                                      //#
+        //    }                                                                                                   //#
+        //    log!(r, "ai.log");                                                                                  //#
+        //}                                                                                                       //#
+        ////#########################################################################################################
+        ////LOGGING######################################################################################
+        //log!(format!("current: {:?}", piece.location), "ai.log");                                   //#
+        //for row in &piece.data {                                                                    //#
+        //    let mut r = String::new();                                                              //#
+        //    for column in row {                                                                     //#
+        //        if *column {                                                                        //#
+        //            r.push_str("[X]")                                                               //#
+        //        } else {r.push_str("[ ]")}                                                          //#
+        //    }                                                                                       //#
+        //    log!(r, "ai.log");                                                                      //#
+        //}                                                                                           //#
+        ////#############################################################################################
         let roto_times = {
             match self.rotation {
                 Rotation::North => 0,
@@ -237,9 +256,9 @@ impl MoveData {
             for _ in distance..0 {moves.push(Move::Left)}
         }
         moves.push(Move::Drop);
-        //LOGGING##########################################################
-        log!(format!("Moves {:?}\n", moves), "ai.log");                 //#
-        //#################################################################
+        ////LOGGING##########################################################
+        //log!(format!("Moves {:?}\n", moves), "ai.log");                 //#
+        ////#################################################################
         moves
     }
 }
@@ -272,7 +291,7 @@ fn check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) 
 }
 
 ///get all possible moves for a piece
-fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::StrippedPiece, is_held: bool) -> Vec<MoveData> {
+fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::StrippedPiece, is_held: bool, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves =  Vec::new();
     let original_location = piece.location;
     for rotation in [Rotation::North, Rotation::East, Rotation::South, Rotation::West].iter() {
@@ -289,7 +308,7 @@ fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::Stripped
             }
             piece.location.1-=1;
             //add move
-            possible_moves.push(MoveData::generate_data(board.clone(), piece.clone(), is_held, rotation.clone()));
+            possible_moves.push(MoveData::generate_data(board.clone(), piece.clone(), is_held, rotation.clone(), parameters));
             //reset piece and move over one
             piece.location.1 = original_location.1;
             piece.location.0 += 1;
@@ -301,14 +320,14 @@ fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::Stripped
 }
 
 ///get all possible moves for current board
-fn get_possible_moves(board: &tetris::StrippedBoard) -> Vec<MoveData> {
+fn get_possible_moves(board: &tetris::StrippedBoard, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves = Vec::new();
-    possible_moves.extend(get_moves_for_piece(&board.data, board.piece.clone(), false));
+    possible_moves.extend(get_moves_for_piece(&board.data, board.piece.clone(), false, parameters));
     if board.piece.can_hold {
         if let Some(held) = &board.held_piece {
-            possible_moves.extend(get_moves_for_piece(&board.data, held.clone(), true));
+            possible_moves.extend(get_moves_for_piece(&board.data, held.clone(), true, parameters));
         } else {
-            possible_moves.extend(get_moves_for_piece(&board.data, board.next_piece.clone(), true));
+            possible_moves.extend(get_moves_for_piece(&board.data, board.next_piece.clone(), true, parameters));
         }
     }
     possible_moves
@@ -316,17 +335,11 @@ fn get_possible_moves(board: &tetris::StrippedBoard) -> Vec<MoveData> {
 
 
 ///takes board. gets all possible moves. finds best move. generates input
-fn get_input_move(board: tetris::StrippedBoard) -> Vec<Move> {
-    let possible_moves = get_possible_moves(&board);
-    if possible_moves.len() != 0 {
-        let best_move = {
-            let mut best = &possible_moves[0];
-            for move_data in &possible_moves {
-                if move_data.score > best.score {best = &move_data}
-            }
-            best
-        };
-        best_move.gen_input(&board)
+fn get_input_move(board: tetris::StrippedBoard, parameters: &AiParameters) -> Vec<Move> {
+    let mut possible_moves = get_possible_moves(&board, parameters);
+    if !possible_moves.is_empty() {
+        possible_moves.sort_by(|a,b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));     //IF NAN DEFAULTS TO EQUAL
+        possible_moves[0].gen_input(&board)
     } else {vec!(Move::Restart)}
 }
 
@@ -372,6 +385,16 @@ impl MainRadio {
         } else {Ok(None)}
     }
 
+    pub fn wait_for_dump_input(&self) -> Result<Vec<Move>, PoisonError<MutexGuard<Vec<Move>>>> {
+        let mut input = Vec::new();
+        while input.len() == 0 {
+            let mut ai_input = self.input.lock()?;
+            input = ai_input.clone();
+            ai_input.clear();
+        }
+        Ok(input)
+    }
+
     ///tells ai thread to exit and waits for join
     pub fn join(&mut self) -> DynResult<()> {
         self.tx.send(Packet{board: None, exit: true})?;
@@ -396,23 +419,28 @@ impl AiRadio {
 }
 
 ///for every packet received calculates moves
-fn ai_loop(radio: AiRadio) {
+fn ai_loop(radio: AiRadio, parameters: AiParameters) {
+    let mut last_board = Vec::new();
     for packet in &radio.rx {
         if let Some(board) = packet.board {
-            if !board.gameover {
-                check!(radio.set_input(get_input_move(board)));
-            } else {check!(radio.set_input(vec!(Move::Restart)))}
+            if board.data != last_board {
+                last_board = board.data.clone();
+                if !board.gameover {
+                    check!(radio.set_input(get_input_move(board, &parameters)));
+                } else {check!(radio.set_input(vec!(Move::Restart)))}
+            }
         } else if packet.exit {break}
     }
 }
 
 ///starts the AI thread
-pub fn start() -> MainRadio {
-    clean!("ai.log");
+pub fn start(parameters: &AiParameters) -> MainRadio {
+    //clean!("ai.log");
     let input = Arc::new(Mutex::new(Vec::new()));
     let (tx, rx) = mpsc::channel();
     let ai_radio = AiRadio {input: Arc::clone(&input), rx};
-    let handle = thread::spawn(move || {ai_loop(ai_radio)});
+    let parameters = parameters.clone();
+    let handle = thread::spawn(move || {ai_loop(ai_radio, parameters)});
     MainRadio {tx, input, handle: Some(handle)}
 }
 //have arg to run it with AI. maybe button in game? maybe have it compete against player?
