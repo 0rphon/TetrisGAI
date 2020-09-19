@@ -22,16 +22,17 @@ fn main() {
         }
     }
 
+    //2 : 0.384 : 0.071 : 0.647 : 0.939 : 0.480 : 0.983 : 2 : 0.511
     let parameters = ai::AiParameters {
-        min_cleared_rows:               3,
-        cleared_rows_importance:        0.50,
-        piece_depth_importance:         0.25,
-        max_height_importance:          0.75,
-        avg_height_importance:          0.0,
-        height_variation_importance:    0.5,
-        current_holes_importance:       3.5,
+        min_cleared_rows:               2,
+        cleared_rows_importance:        0.384,
+        piece_depth_importance:         0.071,
+        max_height_importance:          0.647,
+        avg_height_importance:          0.939,
+        height_variation_importance:    0.480,
+        current_holes_importance:       0.983,
         max_pillar_height:              2,
-        current_pillars_importance:     0.75,
+        current_pillars_importance:     0.511,
     };
 
     let mut board = check!(Board::new_board());
@@ -89,7 +90,8 @@ fn main() {
                         ai::Move::Rotate    => {board.move_piece(Move::Rotate);}
                         ai::Move::Drop      => {board.move_piece(Move::Drop);},
                         ai::Move::Hold      => {check!(board.piece_hold());},
-                        ai::Move::Restart   => {}//check!(board.reset())
+                        ai::Move::Restart   => {},//check!(board.reset()),
+                        ai::Move::None      => {},
                     }
                 }
             } else {

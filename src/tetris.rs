@@ -359,11 +359,11 @@ pub struct Board {
     backdrop: Sprite,
     pub dimensions: (usize, usize),
     padding: usize,
-    score: usize,
+    pub score: usize,
     highscore: usize,
     cleared: usize,
     frame: usize,
-    level: usize,
+    pub level: usize,
     pub gameover: bool,
 }
 

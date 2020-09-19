@@ -26,7 +26,7 @@ pub struct AiParameters {
 impl fmt::Display for AiParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, 
-            "{} : {} : {} : {} : {} : {} : {} : {} : {}", 
+            "{} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {} : {:.03}", 
             self.min_cleared_rows, 
             self.cleared_rows_importance,
             self.piece_depth_importance,
@@ -50,7 +50,8 @@ pub enum Move {
     Rotate,
     Drop,
     Hold,
-    Restart
+    Restart,
+    None,
 }
 
 ///current piece rotation relative to its start
@@ -385,16 +386,6 @@ impl MainRadio {
         } else {Ok(None)}
     }
 
-    pub fn wait_for_dump_input(&self) -> Result<Vec<Move>, PoisonError<MutexGuard<Vec<Move>>>> {
-        let mut input = Vec::new();
-        while input.len() == 0 {
-            let mut ai_input = self.input.lock()?;
-            input = ai_input.clone();
-            ai_input.clear();
-        }
-        Ok(input)
-    }
-
     ///tells ai thread to exit and waits for join
     pub fn join(&mut self) -> DynResult<()> {
         self.tx.send(Packet{board: None, exit: true})?;
@@ -416,6 +407,15 @@ impl AiRadio {
         *ai_input = input;
         Ok(())
     }
+
+    /// notify the main thread that you got a board but you not generating doing any new moves
+    /// only writes to buffer is buffer is empty, else does nothing.
+    /// used to tell trainer function that it got the board
+    fn notify_none(&self) -> Result<(), PoisonError<MutexGuard<Vec<Move>>>>{
+        let mut ai_input = self.input.lock()?;
+        if ai_input.is_empty() {*ai_input = vec!(Move::None)} 
+        Ok(())
+    }
 }
 
 ///for every packet received calculates moves
@@ -428,7 +428,7 @@ fn ai_loop(radio: AiRadio, parameters: AiParameters) {
                 if !board.gameover {
                     check!(radio.set_input(get_input_move(board, &parameters)));
                 } else {check!(radio.set_input(vec!(Move::Restart)))}
-            }
+            } else {check!(radio.notify_none())}
         } else if packet.exit {break}
     }
 }
