@@ -76,7 +76,7 @@ fn main() {
                 ai_radio = {
                     match ai_radio {
                         Some(_) => None,
-                        None => Some(ai::start(&parameters)),
+                        None => Some(ai::start(parameters.clone())),
                     }
                 }
             }

@@ -22,41 +22,6 @@ use threadpool::ThreadPool;
 //};
 
 
-//TIMINGS
-//batch times
-//  100 = 78s   
-//  50  = 38s   (x2 = 76s)
-//  25  = 14s   (x4 = 56s)
-//pooled
-//  25x4 = 68s
-//  20x5 = 64s
-//  10x10= 82s
-//multi sim pooled
-//  10x20x5     1084s avg 7.97ms    var 126682-501204
-//  10x100x1    561s  avg 41.8ms    var 100672-451348
-//proper pooled
-//  10x20x100   00h08m11s    |    2.04g/s    |     93p/s    |    score variation: 374846
-//  10x15x100   00h08m31s    |    1.96g/s    |    119p/s    |    score variation: 419320
-//  10x12x100   00h08m04s    |    2.07g/s    |    149p/s    |    score variation: 476724
-//  10x11x100   00h08m03s    |    2.07g/s    |    162p/s    |    score variation: 424602
-//  10x10x100   00h08m02s    |    2.07g/s    |    174p/s    |    score variation: 384238
-//  10x10x100   00h08m14s    |    2.02g/s    |    171p/s    |    score variation: 371070
-//  10x9x100    00h08m39s    |    1.93g/s    |    184p/s    |    score variation: 433620
-//  10x7x100    00h08m37s    |    1.93g/s    |    219p/s    |    score variation: 423344
-//  10x5x100    00h09m50s    |    1.69g/s    |    249p/s    |    score variation: 429140
-//  10x3x100    00h14m09s    |    1.18g/s    |    295p/s    |    score variation: 486018
-//  10x2x100    00h02m03s    |     10%    |    0.81game/s    |    ETA: 00h18m27s
-//  10x1x100    00h02m03s    |     06%    |    0.50game/s    |    ETA: 00h31m00s
-
-
-//VARIATION (REDUCED BATCH SIZE BUT MORES SIM STEPS BATCH_SIZE*SIM_SIZE == 1000) 
-//  100x10      00h08m25s    |    1.98g/s    |    181p/s    |    score variation: 67722
-//  50x20       00h08m38s    |    1.93g/s    |    182p/s    |    score variation: 449570
-//  40x25       00h07m49s    |    2.13g/s    |    169p/s    |    score variation: 194249
-
-//  50x10       00h04m07s    |    2.02g/s    |    171p/s    |    score variation: 521488
-
-//INCREASING PRIORITY HAD NO EFFECT
 
 ///times to run each AIs game
 const SIM_TIMES: usize      = 10;
@@ -67,7 +32,7 @@ const BATCH_SIZE: usize     = 100;
 ///max level before timeout
 const MAX_LEVEL: usize      = 100;
 ///how often to update screen
-const DISPLAY_INTERVAL: f32 = 12.3; 
+const DISPLAY_INTERVAL: usize = 13; 
 
 
 
@@ -96,15 +61,17 @@ impl DisplayThread {
                     .checked_sub(elapsed)
                     .unwrap_or(0);
                 println!(
-                    "{:02}h{:02}m{:02}s    |    {:>4}    |    {:.02}g/s    |    ETA: {:02}h{:02}m{:02}s", 
+                    "{:02}h{:02}m{:02}s    |    {:>3}    |    {:.02}g/s    |    ETA: {:02}h{:02}m{:02}s", 
                     elapsed/3600, (elapsed%3600)/60, elapsed%60,
                     format!("{:02}%",percent), 
-                    {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL; if p.is_nan() {0.0} else {p}}, 
+                    {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}}, 
                     eta/3600, (eta%3600)/60, eta%60
                 );
                 last_progress = progress;
-                if let Ok(true) = rx.try_recv() {break} 
-                else {thread::sleep(Duration::from_secs_f32(DISPLAY_INTERVAL))}
+                for _ in 0..DISPLAY_INTERVAL {
+                    if let Ok(true) = rx.try_recv() {return} 
+                    thread::sleep(Duration::from_secs(1))
+                }
             }
         });
         Self {tx, handle}
@@ -162,33 +129,33 @@ impl fmt::Display for GameResult {
 
 ///does the actual training
 pub fn train() -> DynResult<()> {
-    //let generation = (0..BATCH_SIZE).map(|_| {
-    //    ai::AiParameters {
-    //        min_cleared_rows:               3,
-    //        cleared_rows_importance:        0.50,
-    //        piece_depth_importance:         0.25,
-    //        max_height_importance:          0.75,
-    //        avg_height_importance:          0.0,
-    //        height_variation_importance:    0.5,
-    //        current_holes_importance:       3.5,
-    //        max_pillar_height:              2,
-    //        current_pillars_importance:     0.75,
-    //    }
-    //}).collect::<Vec<ai::AiParameters>>();
-    let mut rng = rand::thread_rng();
     let generation = (0..BATCH_SIZE).map(|_| {
         ai::AiParameters {
-            min_cleared_rows:               rng.gen_range(0,5),
-            cleared_rows_importance:        rng.gen_range(0.0,1.0),
-            piece_depth_importance:         rng.gen_range(0.0,1.0),
-            max_height_importance:          rng.gen_range(0.0,1.0),
-            avg_height_importance:          rng.gen_range(0.0,1.0),
-            height_variation_importance:    rng.gen_range(0.0,1.0),
-            current_holes_importance:       rng.gen_range(0.0,1.0),
-            max_pillar_height:              rng.gen_range(0,5),
-            current_pillars_importance:     rng.gen_range(0.0,1.0),
+            min_cleared_rows:               3,
+            cleared_rows_importance:        0.50,
+            piece_depth_importance:         0.25,
+            max_height_importance:          0.75,
+            avg_height_importance:          0.0,
+            height_variation_importance:    0.5,
+            current_holes_importance:       3.5,
+            max_pillar_height:              2,
+            current_pillars_importance:     0.75,
         }
     }).collect::<Vec<ai::AiParameters>>();
+    //let mut rng = rand::thread_rng();
+    //let generation = (0..BATCH_SIZE).map(|_| {
+    //    ai::AiParameters {
+    //        min_cleared_rows:               rng.gen_range(0,5),
+    //        cleared_rows_importance:        rng.gen_range(0.0,1.0),
+    //        piece_depth_importance:         rng.gen_range(0.0,1.0),
+    //        max_height_importance:          rng.gen_range(0.0,1.0),
+    //        avg_height_importance:          rng.gen_range(0.0,1.0),
+    //        height_variation_importance:    rng.gen_range(0.0,1.0),
+    //        current_holes_importance:       rng.gen_range(0.0,1.0),
+    //        max_pillar_height:              rng.gen_range(0,5),
+    //        current_pillars_importance:     rng.gen_range(0.0,1.0),
+    //    }
+    //}).collect::<Vec<ai::AiParameters>>();
 
 
     let start = Instant::now();
@@ -211,17 +178,17 @@ pub fn train() -> DynResult<()> {
 
 ///takes Vec<Parameters> and does generation
 fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>> {
-    let board = Board::new_board()?;
+    let master_board = Arc::new(Board::new_board()?);
     let progress = Arc::new(Mutex::new(0));
     let display_thread = DisplayThread::start(Arc::clone(&progress));
     let (tx, rx) = mpsc::channel();
 
     let pool = ThreadPool::new(POOL_SIZE);
     for child in generation {
-        let board_clone = board.clone();
+        let board_ref = Arc::clone(&master_board);
         let progress = Arc::clone(&progress);
         let tx = tx.clone();
-        pool.execute(move || check!(tx.send(play_game(board_clone, child, progress))));
+        pool.execute(move || check!(tx.send(play_game(board_ref, child, progress))));
     }
     pool.join();
 
@@ -234,42 +201,41 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
 
 
 ///plays a game SIM_TIMES times
-fn play_game(mut board: Board, parameters: ai::AiParameters, progress: Arc<Mutex<usize>>) -> GameResult {
+fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mutex<usize>>) -> GameResult {
     let mut results = Vec::new();
-    let mut ai_radio = ai::start(&parameters);
+    let mut ai_radio = ai::start(parameters.clone());
     for _ in 0..SIM_TIMES {
+        let mut sim_board = (*board).clone();
         let mut placed = 0;
         let start = Instant::now();
-        while !board.gameover && board.level < MAX_LEVEL {
-            check!(ai_radio.send_board(board.get_board()));
+        while !sim_board.gameover && sim_board.level < MAX_LEVEL {
+            check!(ai_radio.send_board(sim_board.get_board()));
             loop {
                 if let Some(ai_input) = check!(ai_radio.get_input()) {
                     match ai_input {
-                        ai::Move::Left      => {board.move_piece(Move::Left);},
-                        ai::Move::Right     => {board.move_piece(Move::Right);},
-                        ai::Move::Rotate    => {board.move_piece(Move::Rotate);}
-                        ai::Move::Drop      => {board.move_piece(Move::Drop);placed+=1;},
-                        ai::Move::Hold      => {check!(board.piece_hold());},
+                        ai::Move::Left      => {sim_board.move_piece(Move::Left);},
+                        ai::Move::Right     => {sim_board.move_piece(Move::Right);},
+                        ai::Move::Rotate    => {sim_board.move_piece(Move::Rotate);}
+                        ai::Move::Drop      => {sim_board.move_piece(Move::Drop);placed+=1;},
+                        ai::Move::Hold      => {check!(sim_board.piece_hold());},
                         ai::Move::Restart   => {},
                         ai::Move::None      => {},
                     }
                     break
                 }
             }
-            check!(board.try_update());
+            check!(sim_board.try_update());
         }
         results.push(
             GameResult{
                 parameters: None,
-                score: board.score, 
-                level: board.level,
+                score: sim_board.score, 
+                level: sim_board.level,
                 placed, 
                 speed: placed.checked_div((Instant::now()-start).as_secs() as usize).unwrap_or(0)
             }
         );
-        check!(board.reset());
-        let mut prog = progress.lock().unwrap();
-        *prog+=1;
+        *(progress.lock().unwrap())+=1;
     }    
     check!(ai_radio.join());
     GameResult::get_averaged(results, parameters)
@@ -326,3 +292,14 @@ fn play_game(mut board: Board, parameters: ai::AiParameters, progress: Arc<Mutex
 
 //i think having a 100 level timeout and rewarding based off score will work now that input is limited
 //now i just need to optimize and impl the actual evolutionary alg
+
+
+
+//before pooling it was at 8m30s
+//after its at 7m30s
+//benchmarks using my params 10x10x100
+//START                                                                                     00h07m13s    |    2.31g/s    |    147p/s    |    score variation: 193450
+//changed master board to Arc<T> and removed board.reset() in sims                          00h06m35s    |    2.53g/s    |    154p/s    |    score variation: 164542
+//adjusted locks in ai Arc<Mutex<T>>                                                        00h06m11s    |    2.70g/s    |    156p/s    |    score variation: 195230
+//stopped DisplayThread from blocking during sleep so join() happens faster after pool exit 00h06m15s    |    2.67g/s    |    158p/s    |    score variation: 187122
+//

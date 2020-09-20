@@ -291,6 +291,21 @@ fn check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) 
     false
 }
 
+fn _check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) -> bool {
+    let board_dim = (board[0].len(), board.len());
+    let flat_board = board.iter().flatten().map(|b| *b).collect::<Vec<bool>>();
+    let piece_dim = (piece.data[0].len(), piece.data.len());
+    piece.data.iter().enumerate().any(|(row_i, row)| {
+        row.iter().enumerate().any(|(block_i, block)| {
+            if *block {
+                if let Some(cell) = flat_board.get(((piece.location.1+row_i as isize)*(piece.location.0+block_i as isize)) as usize) {
+                    *cell
+                } else {true}
+            } else {false}
+        })
+    })
+}
+
 ///get all possible moves for a piece
 fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::StrippedPiece, is_held: bool, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves =  Vec::new();
@@ -403,15 +418,14 @@ struct AiRadio {
 impl AiRadio {
     ///sets the ai input
     fn set_input(&self, input: Vec<Move>) -> Result<(), PoisonError<MutexGuard<Vec<Move>>>> {
-        let mut ai_input = self.input.lock()?;
-        *ai_input = input;
+        *(self.input.lock()?) = input;
         Ok(())
     }
 
     /// notify the main thread that you got a board but you not generating doing any new moves
     /// only writes to buffer is buffer is empty, else does nothing.
-    /// used to tell trainer function that it got the board
-    fn notify_none(&self) -> Result<(), PoisonError<MutexGuard<Vec<Move>>>>{
+    /// used to tell trainer function that it got the board but chose not to move
+    fn dont_move(&self) -> Result<(), PoisonError<MutexGuard<Vec<Move>>>>{
         let mut ai_input = self.input.lock()?;
         if ai_input.is_empty() {*ai_input = vec!(Move::None)} 
         Ok(())
@@ -428,18 +442,17 @@ fn ai_loop(radio: AiRadio, parameters: AiParameters) {
                 if !board.gameover {
                     check!(radio.set_input(get_input_move(board, &parameters)));
                 } else {check!(radio.set_input(vec!(Move::Restart)))}
-            } else {check!(radio.notify_none())}
+            } else {check!(radio.dont_move())}
         } else if packet.exit {break}
     }
 }
 
 ///starts the AI thread
-pub fn start(parameters: &AiParameters) -> MainRadio {
+pub fn start(parameters: AiParameters) -> MainRadio {
     //clean!("ai.log");
     let input = Arc::new(Mutex::new(Vec::new()));
     let (tx, rx) = mpsc::channel();
     let ai_radio = AiRadio {input: Arc::clone(&input), rx};
-    let parameters = parameters.clone();
     let handle = thread::spawn(move || {ai_loop(ai_radio, parameters)});
     MainRadio {tx, input, handle: Some(handle)}
 }
