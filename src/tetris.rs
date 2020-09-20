@@ -114,7 +114,7 @@ impl error::Error for TetrisError {}
 
 
 ///blocks in piece
-type PieceData = Vec<Vec<Option<Sprite>>>;
+type BlockData = Vec<Vec<Option<Sprite>>>;
 ///piece types
 #[derive(Clone, PartialEq)]
 enum PieceType {I, O, T, S, Z, J, L}
@@ -123,7 +123,7 @@ enum PieceType {I, O, T, S, Z, J, L}
 struct Piece {
     type_: PieceType,
     location: (isize, isize),
-    data: PieceData,
+    data: BlockData,
     can_hold: bool,
 }
 impl Piece {
@@ -144,7 +144,7 @@ impl Piece {
     }
 
     ///generates a piece's block data
-    fn gen_piece(shape: Vec<Vec<bool>>, color: [u8;4]) -> PieceData {
+    fn gen_piece(shape: Vec<Vec<bool>>, color: [u8;4]) -> BlockData {
         shape.iter().map(|row|
             row.iter().map(|block|
                 if *block {
@@ -355,7 +355,7 @@ pub struct Board {
     next_piece: Piece,
     held_piece: Option<Piece>,
     spawn: (isize, isize),
-    data:   Vec<Vec<Option<Sprite>>>,
+    data:   BlockData,
     backdrop: Sprite,
     pub dimensions: (usize, usize),
     padding: usize,
@@ -545,7 +545,7 @@ impl Board {
         let mut cleared = Vec::new();
         for row in 0..self.data.len() {
             //if row doesnt have any empty blocks then remove
-            if !self.data[row].iter().any(|b| b.is_none()) {
+            if self.data[row].iter().all(|b| b.is_some()) {
                 self.data.remove(row);
                 self.data.insert(0, vec!(None;self.data[0].len()));
                 cleared.push(row);
@@ -565,9 +565,7 @@ impl Board {
             4 => 1200,
             _ => 3600
         };
-        self.score += cleared.iter().map(|row|
-            modifier*(BOARD_HEIGHT-row+1)
-        ).collect::<Vec<_>>().iter().sum::<usize>();
+        self.score += cleared.iter().map(|row|modifier*(BOARD_HEIGHT-row+1)).sum::<usize>();
         if self.score > self.highscore {
             self.highscore = self.score;
             let mut file = OpenOptions::new()
@@ -671,8 +669,22 @@ impl Board {
 
 
 
-///blocks have been replaced with bools
-pub type StrippedData = Vec<Vec<bool>>;
+///blocks have been replaced with Vec<bools>
+#[derive(Clone, Debug)]
+pub struct StrippedData {
+    pub data: Vec<bool>,
+    pub width: usize,
+    pub height: usize,
+}
+impl StrippedData {
+    fn strip(data: &BlockData) -> Self {
+        Self {
+            width: data[0].len(),
+            height: data.len(),
+            data: data.iter().flatten().map(|cell| cell.is_some()).collect()
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct StrippedPiece {
@@ -685,13 +697,7 @@ impl StrippedPiece {
     fn get(piece: &Piece) -> Self {
         Self {
             location: piece.location,
-            data: {
-                piece.data.iter().map(|row| 
-                    row.iter().map(|block| 
-                        block.is_some()
-                    ).collect()
-                ).collect()
-            },
+            data: StrippedData::strip(&piece.data),
             can_hold: piece.can_hold,
         }
     }
@@ -714,16 +720,8 @@ impl StrippedBoard {
         Self {
             piece: StrippedPiece::get(&board.piece),
             next_piece: StrippedPiece::get(&board.next_piece),
-            held_piece: if let Some(held) = &board.held_piece {
-                Some(StrippedPiece::get(held))
-            } else {None},
-            data: {
-                board.data.iter().map(|row|
-                    row.iter().map(|block|
-                        block.is_some()
-                    ).collect()
-                ).collect()
-            },
+            held_piece: if let Some(held) = &board.held_piece {Some(StrippedPiece::get(held))} else {None},
+            data: StrippedData::strip(&board.data),
             score: board.score,
             level: board.level,
             gameover: board.gameover,

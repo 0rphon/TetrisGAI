@@ -11,7 +11,7 @@ use threadpool::ThreadPool;
 //my params
 //let parameters = ai::AiParameters {
 //    min_cleared_rows:               3,
-//    cleared_rows_importance:        0.50,
+//    points_scored_importance:        0.50,
 //    piece_depth_importance:         0.25,
 //    max_height_importance:          0.75,
 //    avg_height_importance:          0.0,
@@ -128,35 +128,38 @@ impl fmt::Display for GameResult {
 
 
 ///does the actual training
-pub fn train() -> DynResult<()> {
-    let generation = (0..BATCH_SIZE).map(|_| {
-        ai::AiParameters {
-            min_cleared_rows:               3,
-            cleared_rows_importance:        0.50,
-            piece_depth_importance:         0.25,
-            max_height_importance:          0.75,
-            avg_height_importance:          0.0,
-            height_variation_importance:    0.5,
-            current_holes_importance:       3.5,
-            max_pillar_height:              2,
-            current_pillars_importance:     0.75,
+pub fn train(dry_run: bool) -> DynResult<()> {
+    let generation = {
+        if dry_run {
+            (0..BATCH_SIZE).map(|_| {
+                ai::AiParameters {
+                    points_scored_importance:       0.50,
+                    piece_depth_importance:         0.25,
+                    max_height_importance:          0.75,
+                    avg_height_importance:          0.0,
+                    height_variation_importance:    0.5,
+                    current_holes_importance:       3.5,
+                    max_pillar_height:              2,
+                    current_pillars_importance:     0.75,
+                }
+            }).collect::<Vec<ai::AiParameters>>()
+        } else {
+            let mut rng = rand::thread_rng();
+            (0..BATCH_SIZE).map(|_| {
+                ai::AiParameters {
+                    points_scored_importance:       rng.gen_range(0.0,1.0),
+                    piece_depth_importance:         rng.gen_range(0.0,1.0),
+                    max_height_importance:          rng.gen_range(0.0,1.0),
+                    avg_height_importance:          rng.gen_range(0.0,1.0),
+                    height_variation_importance:    rng.gen_range(0.0,1.0),
+                    current_holes_importance:       rng.gen_range(0.0,1.0),
+                    max_pillar_height:              rng.gen_range(0,5),
+                    current_pillars_importance:     rng.gen_range(0.0,1.0),
+                }
+            }).collect::<Vec<ai::AiParameters>>()
         }
-    }).collect::<Vec<ai::AiParameters>>();
-    //let mut rng = rand::thread_rng();
-    //let generation = (0..BATCH_SIZE).map(|_| {
-    //    ai::AiParameters {
-    //        min_cleared_rows:               rng.gen_range(0,5),
-    //        cleared_rows_importance:        rng.gen_range(0.0,1.0),
-    //        piece_depth_importance:         rng.gen_range(0.0,1.0),
-    //        max_height_importance:          rng.gen_range(0.0,1.0),
-    //        avg_height_importance:          rng.gen_range(0.0,1.0),
-    //        height_variation_importance:    rng.gen_range(0.0,1.0),
-    //        current_holes_importance:       rng.gen_range(0.0,1.0),
-    //        max_pillar_height:              rng.gen_range(0,5),
-    //        current_pillars_importance:     rng.gen_range(0.0,1.0),
-    //    }
-    //}).collect::<Vec<ai::AiParameters>>();
-
+    };
+    
 
     let start = Instant::now();
     let results = check!(do_generation(generation));
@@ -203,7 +206,7 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
 ///plays a game SIM_TIMES times
 fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mutex<usize>>) -> GameResult {
     let mut results = Vec::new();
-    let mut ai_radio = ai::start(parameters.clone());
+    let mut ai_radio = ai::start(parameters.clone(), false);
     for _ in 0..SIM_TIMES {
         let mut sim_board = (*board).clone();
         let mut placed = 0;
@@ -302,4 +305,9 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //changed master board to Arc<T> and removed board.reset() in sims                          00h06m35s    |    2.53g/s    |    154p/s    |    score variation: 164542
 //adjusted locks in ai Arc<Mutex<T>>                                                        00h06m11s    |    2.70g/s    |    156p/s    |    score variation: 195230
 //stopped DisplayThread from blocking during sleep so join() happens faster after pool exit 00h06m15s    |    2.67g/s    |    158p/s    |    score variation: 187122
-//
+//converted from 2d vec to 1d, changed "lines cleared" to "points scored", combined all height functions            MAY AFFECT TIMES
+//                                                                                          00h15m41s    |    1.06g/s    |    174p/s    |    score variation: 108042
+//switched y*width+x to indexing use idx = x; idx += self.width                             00h06m11s    |    2.70g/s    |    169p/s    |    score variation: 78930
+//changed indexing to use constants from tetris                                             00h06m52s    |    2.43g/s    |    162p/s    |    score variation: 92050
+//                                                                                          00h07m03s    |    2.36g/s    |    173p/s    |    score variation: 113170
+//REVERTED CONSTANTS FOR INDEXING                                                           00h06m30s    |    2.56g/s    |    169p/s    |    score variation: 80768
