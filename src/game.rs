@@ -6,6 +6,7 @@ use rand::Rng;
 use std::{fmt, error};
 use std::fs::OpenOptions;
 use std::io::prelude::*;
+use std::mem;
 
 ///the size of each block. used to calc grid
 const BLOCK_SIZE:           usize           = 32;
@@ -120,7 +121,7 @@ type BlockData = Vec<Vec<Option<Sprite>>>;
 enum PieceType {I, O, T, S, Z, J, L}
 ///the piece object
 #[derive(Clone)]
-struct Piece {
+pub struct Piece {                                    //ONLY PUBLIC BECAUSE BENCHMARKING REQUIRED IT TO BE
     type_: PieceType,
     location: (isize, isize),
     data: BlockData,
@@ -245,7 +246,7 @@ impl Piece {
         let mut shadow = self.clone();
         for row in 0..shadow.data.len() {
             for block in 0..shadow.data[row].len() {
-                if let Some(sprite) = shadow.data[row][block].clone() {
+                if let Some(sprite) = &shadow.data[row][block] {
                     shadow.data[row][block].as_mut().unwrap().img = sprite.img.iter().map(|y|
                         y.iter().map(|x|
                             if *x != BORDER_COLOR {SHADOW_COLOR}
@@ -339,6 +340,7 @@ impl Piece {
 
 
 ///possible piece movements
+#[derive(Debug, Clone, Copy)]
 pub enum Move {
     Down,
     Left,
@@ -412,9 +414,8 @@ impl Board {
             if self.piece.can_hold {
                 self.piece.location = self.spawn;
                 self.piece.reset_rotation();
-                if let Some(held) = self.held_piece.clone() {
-                    self.held_piece = Some(self.piece.clone());
-                    self.piece = held;
+                if let Some(held) = self.held_piece.take(){
+                    self.held_piece = Some(mem::replace(&mut self.piece, held));
                 }
                 else {
                     self.held_piece = Some(self.piece.clone());
@@ -524,14 +525,14 @@ impl Board {
         Ok(())
     }
 
-    ///attempts to set piece
+    ///consumes current piece and attempts to set piece
     fn set_piece(&mut self) -> DynResult<()>{
         for row in 0..self.piece.data.len() {
             for block in 0..self.piece.data[row].len() {
                 if let Some(_) = self.piece.data[row][block] {
                     if let Some(y) = self.data.get_mut((self.piece.location.1+row as isize) as usize) {                //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
                         if let Some(x) = y.get_mut((self.piece.location.0+block as isize) as usize) {                  //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                            *x = self.piece.data[row][block].clone();
+                            *x = self.piece.data[row][block].take();
                         }
                     }
                 }
@@ -580,9 +581,12 @@ impl Board {
     ///spawns a new piece
     fn next_piece(&mut self) -> DynResult<()> {
         if !self.check_collision(&self.next_piece) {
-            self.piece = self.next_piece.clone();
-            while self.next_piece.type_ == self.piece.type_ {
-                self.next_piece = Piece::gen_random(self.spawn)?;
+            loop {
+                let attempt_piece = Piece::gen_random(self.spawn)?;
+                if attempt_piece.type_ != self.piece.type_ {
+                    self.piece = mem::replace(&mut self.next_piece, attempt_piece);
+                    break   
+                }
             }
             self.update_shadow();
             Ok(())
@@ -726,5 +730,49 @@ impl StrippedBoard {
             level: board.level,
             gameover: board.gameover,
         }
+    }
+}
+
+
+
+
+
+
+pub mod tests {
+    use dynerr::*;
+    pub fn get_highscore() -> DynResult<usize> {
+        super::Board::get_highscore()
+    }
+
+    pub fn update_shadow(board: &mut super::Board) {
+        board.update_shadow();
+    }
+
+    pub fn get_speed(board: &super::Board) -> usize {
+        board.get_speed()
+    }
+
+    pub fn update(board: &mut super::Board) -> DynResult<()> {
+        board.update()
+    }
+
+    pub fn set_piece(board: &mut super::Board) -> DynResult<()> {
+        board.set_piece()
+    }
+
+    pub fn update_rows(board: &mut super::Board) -> Vec<usize> {
+        board.update_rows()
+    }
+
+    pub fn update_progress(board: &mut super::Board, cleared: Vec<usize>) -> DynResult<()> {
+        board.update_progress(cleared)
+    }
+
+    pub fn next_piece(board: &mut super::Board) -> DynResult<()> {
+        board.next_piece()
+    }
+
+    pub fn check_collision(board: &mut super::Board, piece: &super::Piece) -> bool {
+        board.check_collision(piece)
     }
 }

@@ -1,11 +1,12 @@
 //#![windows_subsystem = "windows"]         //UNCOMMENT FOR RELEASE
-mod tetris;
-use tetris::{Board, Move};
+#![feature(test)]
+pub mod game;
+pub use game::{Board, Move};
 mod ai;
 mod train;
 
 use dynerr::*;
-use engine::{drawing, game};
+use engine;
 
 use std::env::args;
 use std::process::exit;
@@ -13,7 +14,7 @@ use std::process::exit;
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
-fn main() {
+pub fn run() {
 
     if let Some(arg1) = args().nth(1) {
         if arg1.to_lowercase() == "--train" {
@@ -43,16 +44,16 @@ fn main() {
 
     let mut ai_radio = None;
 
-    let mut screen = drawing::Screen::new(
+    let mut screen = engine::drawing::Screen::new(
         board.dimensions.0,
         board.dimensions.1
     );
 
-    let mut fpslock = game::FpsLock::create_lock(TARGET_FPS);
+    let mut fpslock = engine::game::FpsLock::create_lock(TARGET_FPS);
 
-    let event_loop = game::EventLoop::new();
-    let mut input = game::WinitInputHelper::new();
-    let mut window = game::Window::init(
+    let event_loop = engine::game::EventLoop::new();
+    let mut input = engine::game::WinitInputHelper::new();
+    let mut window = engine::game::Window::init(
         GAME_TITLE,
         board.dimensions.0,
         board.dimensions.1,
@@ -61,12 +62,12 @@ fn main() {
 
     event_loop.run(move |event, _, control_flow| {
         fpslock.start_frame();
-        if let game::Event::RedrawRequested(_) = event {
+        if let engine::game::Event::RedrawRequested(_) = event {
 
             screen.wipe();
             board.draw(&mut screen);
             if ai_radio.is_some() {
-                screen.draw_text((0,0), fpslock.get_fps(), 16.0, &[0xFF;4], drawing::DEBUG_FONT);
+                screen.draw_text((0,0), fpslock.get_fps(), 16.0, &[0xFF;4], engine::drawing::DEBUG_FONT);
             }
             screen.flatten(window.pixels.get_frame());
             window.pixels.render().unwrap();
@@ -76,7 +77,7 @@ fn main() {
 
         if input.update(&event) {
 
-            if input.key_pressed(game::VirtualKeyCode::P) {
+            if input.key_pressed(engine::game::VirtualKeyCode::P) {
                 ai_radio = {
                     match ai_radio {
                         Some(_) => None,
@@ -99,40 +100,40 @@ fn main() {
                     }
                 }
             } else {
-                if input.key_pressed(game::VirtualKeyCode::A)
-                || input.key_pressed(game::VirtualKeyCode::Left)
+                if input.key_pressed(engine::game::VirtualKeyCode::A)
+                || input.key_pressed(engine::game::VirtualKeyCode::Left)
                 {board.move_piece(Move::Left);}
     
-                if input.key_pressed(game::VirtualKeyCode::S)
-                || input.key_pressed(game::VirtualKeyCode::Down)
+                if input.key_pressed(engine::game::VirtualKeyCode::S)
+                || input.key_pressed(engine::game::VirtualKeyCode::Down)
                 {board.move_piece(Move::Down);}
     
     
-                if input.key_pressed(game::VirtualKeyCode::D)
-                || input.key_pressed(game::VirtualKeyCode::Right)
+                if input.key_pressed(engine::game::VirtualKeyCode::D)
+                || input.key_pressed(engine::game::VirtualKeyCode::Right)
                 {board.move_piece(Move::Right);}
     
-                if input.key_pressed(game::VirtualKeyCode::W)
-                || input.key_pressed(game::VirtualKeyCode::R)
-                || input.key_pressed(game::VirtualKeyCode::X)
-                || input.key_pressed(game::VirtualKeyCode::Up)
+                if input.key_pressed(engine::game::VirtualKeyCode::W)
+                || input.key_pressed(engine::game::VirtualKeyCode::R)
+                || input.key_pressed(engine::game::VirtualKeyCode::X)
+                || input.key_pressed(engine::game::VirtualKeyCode::Up)
                 {board.move_piece(Move::Rotate);}
     
     
-                if input.key_pressed(game::VirtualKeyCode::F)
-                ||input.key_pressed(game::VirtualKeyCode::C)
+                if input.key_pressed(engine::game::VirtualKeyCode::F)
+                ||input.key_pressed(engine::game::VirtualKeyCode::C)
                 {check!(board.piece_hold());}
     
-                if input.key_pressed(game::VirtualKeyCode::Space)
+                if input.key_pressed(engine::game::VirtualKeyCode::Space)
                 {check!(board.piece_drop());}
             }
-            if input.key_pressed(game::VirtualKeyCode::Return)
-            || input.key_pressed(game::VirtualKeyCode::NumpadEnter)
-            || input.key_pressed(game::VirtualKeyCode::Space) && board.gameover
+            if input.key_pressed(engine::game::VirtualKeyCode::Return)
+            || input.key_pressed(engine::game::VirtualKeyCode::NumpadEnter)
+            || input.key_pressed(engine::game::VirtualKeyCode::Space) && board.gameover
                 {check!(board.reset())}
 
-            if input.key_pressed(game::VirtualKeyCode::Escape) || input.quit() {
-                *control_flow = game::ControlFlow::Exit;
+            if input.key_pressed(engine::game::VirtualKeyCode::Escape) || input.quit() {
+                *control_flow = engine::game::ControlFlow::Exit;
                 if ai_radio.is_some() {
                     check!(ai_radio.as_mut().unwrap().join());
                 }

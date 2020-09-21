@@ -1,4 +1,4 @@
-use super::tetris::{Board, Move};
+use super::game::{Board, Move};
 use super::ai;
 use dynerr::*;
 
@@ -131,6 +131,7 @@ impl fmt::Display for GameResult {
 pub fn train(dry_run: bool) -> DynResult<()> {
     let generation = {
         if dry_run {
+            println!("Starting Dry Run");
             (0..BATCH_SIZE).map(|_| {
                 ai::AiParameters {
                     points_scored_importance:       0.50,
@@ -144,6 +145,7 @@ pub fn train(dry_run: bool) -> DynResult<()> {
                 }
             }).collect::<Vec<ai::AiParameters>>()
         } else {
+            println!("Starting Live Run");
             let mut rng = rand::thread_rng();
             (0..BATCH_SIZE).map(|_| {
                 ai::AiParameters {
@@ -311,3 +313,4 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //changed indexing to use constants from tetris                                             00h06m52s    |    2.43g/s    |    162p/s    |    score variation: 92050
 //                                                                                          00h07m03s    |    2.36g/s    |    173p/s    |    score variation: 113170
 //REVERTED CONSTANTS FOR INDEXING                                                           00h06m30s    |    2.56g/s    |    169p/s    |    score variation: 80768
+//got rid of unnecessary clones in tetris::Board                                            00h05m40s    |    2.94g/s    |    154p/s    |    score variation: 94906

@@ -1,4 +1,4 @@
-use crate::tetris;
+use crate::game;
 
 use dynerr::*;
 
@@ -65,14 +65,14 @@ struct MoveData {
     location: (isize, isize),
     is_held: bool,
     rotation: Rotation,
-    board: tetris::StrippedData,
+    board: game::StrippedData,
     value: f32,
     debug_scores: Vec<f32>,
 }
 
 impl MoveData {
 
-    fn generate_data(mut board: tetris::StrippedData, piece: tetris::StrippedPiece, is_held: bool, rotation: Rotation, parameters: &AiParameters) -> Self {
+    fn generate_data(mut board: game::StrippedData, piece: game::StrippedPiece, is_held: bool, rotation: Rotation, parameters: &AiParameters) -> Self {
         for (i, block) in piece.data.data.iter().enumerate() {
             if *block {
                 let row = i/piece.data.width;
@@ -210,7 +210,7 @@ impl MoveData {
         cleared.iter().map(|y|modifier*(y+1)).sum::<usize>() as f32
     }
 
-    fn gen_input(&self, board: &tetris::StrippedBoard) -> Vec<Move>{
+    fn gen_input(&self, board: &game::StrippedBoard) -> Vec<Move>{
         let mut moves = Vec::new();
         let piece = {
             if self.is_held {
@@ -271,7 +271,7 @@ impl MoveData {
 }
 
 ///rotates piece data
-fn rotate_piece(piece: &mut tetris::StrippedData) {
+fn rotate_piece(piece: &mut game::StrippedData) {
     let original = piece.data.clone();
     for i in 0..piece.data.len() {
         let column = i%piece.width;
@@ -281,7 +281,7 @@ fn rotate_piece(piece: &mut tetris::StrippedData) {
 }
 
 ///checks piece for collision on board
-fn check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) -> bool {
+fn check_collision(board: &game::StrippedData, piece: &game::StrippedPiece) -> bool {
     for i in 0..piece.data.data.len() {
         if piece.data.data[i] {
             let row = i/piece.data.width;
@@ -299,19 +299,8 @@ fn check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) 
     false
 }
 
-///checks collision
-fn _check_collision(board: &tetris::StrippedData, piece: &tetris::StrippedPiece) -> bool {
-    piece.data.data.iter().enumerate().any(|(i, block)| {
-        if *block {
-            if let Some(cell) = board.data.get(((piece.location.1*i as isize)+piece.location.0) as usize) {
-                *cell
-            } else {true}
-        } else {false}
-    })
-}
-
 ///get all possible moves for a piece
-fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::StrippedPiece, is_held: bool, parameters: &AiParameters) -> Vec<MoveData> {
+fn get_moves_for_piece(board: &game::StrippedData, mut piece: game::StrippedPiece, is_held: bool, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves =  Vec::new();
     let original_location = piece.location;
     for rotation in [Rotation::North, Rotation::East, Rotation::South, Rotation::West].iter() {
@@ -340,7 +329,7 @@ fn get_moves_for_piece(board: &tetris::StrippedData, mut piece: tetris::Stripped
 }
 
 ///get all possible moves for current board
-fn get_possible_moves(board: &tetris::StrippedBoard, parameters: &AiParameters) -> Vec<MoveData> {
+fn get_possible_moves(board: &game::StrippedBoard, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves = Vec::new();
     possible_moves.extend(get_moves_for_piece(&board.data, board.piece.clone(), false, parameters));
     if board.piece.can_hold {
@@ -355,7 +344,7 @@ fn get_possible_moves(board: &tetris::StrippedBoard, parameters: &AiParameters) 
 
 
 ///takes board. gets all possible moves. finds best move. generates input
-fn get_input_move(board: tetris::StrippedBoard, parameters: &AiParameters) -> (Vec<Move>, Option<Vec<bool>>) {
+fn get_input_move(board: game::StrippedBoard, parameters: &AiParameters) -> (Vec<Move>, Option<Vec<bool>>) {
     let mut possible_moves = get_possible_moves(&board, parameters);
     if !possible_moves.is_empty() {
         possible_moves.sort_by(|a,b| b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal));     //IF NAN DEFAULTS TO EQUAL
@@ -370,7 +359,7 @@ fn get_input_move(board: tetris::StrippedBoard, parameters: &AiParameters) -> (V
 
 
 ///generates a log message of board mismatch
-fn log_board(last: &Vec<bool>, predicted: &Vec<bool>, board: &tetris::StrippedData) {
+fn log_board(last: &Vec<bool>, predicted: &Vec<bool>, board: &game::StrippedData) {
     let mut message = String::from("Board mismatch!\nLast:\n");
     for row in last.chunks(board.width) {
         for column in row {
@@ -404,7 +393,7 @@ fn log_board(last: &Vec<bool>, predicted: &Vec<bool>, board: &tetris::StrippedDa
 }
 
 pub struct Packet {
-    board: Option<tetris::StrippedBoard>,
+    board: Option<game::StrippedBoard>,
     exit: bool,
 }
 
@@ -423,7 +412,7 @@ impl MainRadio {
     }
 
     ///sends the board to ai
-    pub fn send_board(&self, board: tetris::StrippedBoard) -> DynResult<()> {
+    pub fn send_board(&self, board: game::StrippedBoard) -> DynResult<()> {
         self.send(Packet{board: Some(board), exit: false})
     }
 
@@ -500,3 +489,41 @@ pub fn start(parameters: AiParameters, log_flag: bool) -> MainRadio {
     let handle = thread::spawn(move || {ai_loop(ai_radio, parameters, log_flag)});
     MainRadio {tx, input, handle: Some(handle)}
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+// #[cfg(test)]
+// mod tests {
+//     extern crate test;
+//     use super::*;
+
+//     //132,666 ns/iter (+/- 40,042)
+//     #[bench]
+//     fn ai_speed(b: &mut test::Bencher) {
+//         let board = check!(game::Board::new_board());
+//         let parameters = AiParameters {
+//             points_scored_importance:       0.50,
+//             piece_depth_importance:         0.25,
+//             max_height_importance:          0.75,
+//             avg_height_importance:          0.0,
+//             height_variation_importance:    0.5,
+//             current_holes_importance:       3.5,
+//             max_pillar_height:              2,
+//             current_pillars_importance:     0.75,
+//         };       
+
+//         b.iter(|| 
+//             get_input_move(board.get_board(), &parameters)
+//         );
+//     }
+// }
