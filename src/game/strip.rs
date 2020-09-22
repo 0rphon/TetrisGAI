@@ -1,3 +1,5 @@
+#![doc(hidden)]
+
 use super::*;
 
 ///blocks have been replaced with Vec<bools>
@@ -57,5 +59,19 @@ impl StrippedBoard {
             level: board.level,
             gameover: board.gameover,
         }
+    }
+}
+
+
+
+pub mod tests {
+    use super::*;
+
+    pub fn stripped_data_get(data: &pieces::BlockData) -> StrippedData {
+        StrippedData::strip(data)
+    }
+
+    pub fn stripped_piece_get(piece: &pieces::Piece) -> StrippedPiece {
+        StrippedPiece::get(piece)
     }
 }

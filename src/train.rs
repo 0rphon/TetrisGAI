@@ -32,7 +32,7 @@ const BATCH_SIZE: usize     = 100;
 ///max level before timeout
 const MAX_LEVEL: usize      = 100;
 ///how often to update screen
-const DISPLAY_INTERVAL: usize = 13; 
+const DISPLAY_INTERVAL: usize = 13;
 
 
 
@@ -61,15 +61,15 @@ impl DisplayThread {
                     .checked_sub(elapsed)
                     .unwrap_or(0);
                 println!(
-                    "{:02}h{:02}m{:02}s    |    {:>3}    |    {:.02}g/s    |    ETA: {:02}h{:02}m{:02}s", 
+                    "{:02}h{:02}m{:02}s    |    {:>3}    |    {:.02}g/s    |    ETA: {:02}h{:02}m{:02}s",
                     elapsed/3600, (elapsed%3600)/60, elapsed%60,
-                    format!("{:02}%",percent), 
-                    {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}}, 
+                    format!("{:02}%",percent),
+                    {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}},
                     eta/3600, (eta%3600)/60, eta%60
                 );
                 last_progress = progress;
                 for _ in 0..DISPLAY_INTERVAL {
-                    if let Ok(true) = rx.try_recv() {return} 
+                    if let Ok(true) = rx.try_recv() {return}
                     thread::sleep(Duration::from_secs(1))
                 }
             }
@@ -116,12 +116,12 @@ impl GameResult {
 
 impl fmt::Display for GameResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, 
-            " {:>7} |  {:>3}  | {:>6} | {:>3?}p/s | {}", 
-            self.score, 
-            self.level, 
-            self.placed, 
-            self.speed,  
+        write!(f,
+            " {:>7} |  {:>3}  | {:>6} | {:>3?}p/s | {}",
+            self.score,
+            self.level,
+            self.placed,
+            self.speed,
             if let Some(p) = &self.parameters {format!("{}", p)} else {String::new()})
     }
 }
@@ -161,12 +161,12 @@ pub fn train(dry_run: bool) -> DynResult<()> {
             }).collect::<Vec<ai::AiParameters>>()
         }
     };
-    
+
 
     let start = Instant::now();
     let results = check!(do_generation(generation));
     let elapsed = (Instant::now()-start).as_secs();
-    
+
     println!("GENERATION COMPLETED IN {:02}h{:02}m{:02}s    |    {:0.2}g/s    |    {:>3}p/s    |    score variation: {}",
         elapsed/3600, (elapsed%3600)/60, elapsed%60,
         (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
@@ -234,14 +234,14 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
         results.push(
             GameResult{
                 parameters: None,
-                score: sim_board.score, 
+                score: sim_board.score,
                 level: sim_board.level,
-                placed, 
+                placed,
                 speed: placed.checked_div((Instant::now()-start).as_secs() as usize).unwrap_or(0)
             }
         );
         *(progress.lock().unwrap())+=1;
-    }    
+    }
     check!(ai_radio.join());
     GameResult::get_averaged(results, parameters)
 }

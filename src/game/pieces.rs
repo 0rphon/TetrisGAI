@@ -1,3 +1,5 @@
+#![doc(hidden)]
+
 use engine::sprite::Sprite;
 
 use rand::Rng;
@@ -11,52 +13,52 @@ const BORDER_COLOR:         [u8;4]          = [0x00, 0x00, 0x00, 0xFF];
 ///the color of shadow
 const SHADOW_COLOR:         [u8;4]          = [0x00;4];
 ///the color of the shadows border
-const SHADOW_BORDER_COLOR:  [u8;4]          = [0xDC, 0xDC, 0xDC, 0xFF];     //[0X00;4] TO USE THE PIECE COLOR FOR SHADOW BORDER
+const SHADOW_BORDER_COLOR:  [u8;4]          = [0xDC, 0xDC, 0xDC, 0xFF];
 
 
 
 
 const I_COLOR: [u8;4] = [0x00, 0xFF, 0xFF, 0xFF];
-const I_DATA: [&[bool;4];4] = [
-    &[false, false, false, false],
-    &[true , true , true , true ],
-    &[false, false, false, false],
-    &[false, false, false, false],
+const I_DATA: [[bool;4];4] = [
+    [false, false, false, false],
+    [true , true , true , true ],
+    [false, false, false, false],
+    [false, false, false, false],
 ];
 const O_COLOR: [u8;4] = [0xFF, 0xFF, 0x00, 0xFF];
-const O_DATA: [&[bool;2];2] = [
-    &[true , true],
-    &[true , true],
+const O_DATA: [[bool;2];2] = [
+    [true , true],
+    [true , true],
 ];
 const T_COLOR: [u8;4] = [0x80, 0x00, 0x80, 0xFF];
-const T_DATA: [&[bool;3];3] = [
-    &[false, true , false],
-    &[true , true , true ],
-    &[false, false, false],
+const T_DATA: [[bool;3];3] = [
+    [false, true , false],
+    [true , true , true ],
+    [false, false, false],
 ];
 const S_COLOR: [u8;4] = [0x00, 0x80, 0x00, 0xFF];
-const S_DATA: [&[bool;3];3] = [
-    &[false, true , true ],
-    &[true , true , false],
-    &[false, false, false],
+const S_DATA: [[bool;3];3] = [
+    [false, true , true ],
+    [true , true , false],
+    [false, false, false],
 ];
 const Z_COLOR: [u8;4] = [0xFF, 0x00, 0x00, 0xFF];
-const Z_DATA: [&[bool;3];3] = [
-    &[true , true , false],
-    &[false, true , true ],
-    &[false, false, false],
+const Z_DATA: [[bool;3];3] = [
+    [true , true , false],
+    [false, true , true ],
+    [false, false, false],
 ];
 const J_COLOR: [u8;4] = [0x00, 0x00, 0xFF, 0xFF];
-const J_DATA: [&[bool;3];3] = [
-    &[true , false, false],
-    &[true , true , true ],
-    &[false, false, false],
+const J_DATA: [[bool;3];3] = [
+    [true , false, false],
+    [true , true , true ],
+    [false, false, false],
 ];
 const L_COLOR: [u8;4] = [0xFF, 0xA5, 0x00, 0xFF];
-const L_DATA: [&[bool;3];3] = [
-    &[false, false, true ],
-    &[true , true , true ],
-    &[false, false, false],
+const L_DATA: [[bool;3];3] = [
+    [false, false, true ],
+    [true , true , true ],
+    [false, false, false],
 ];
 
 ///converts [&[T; Size]; Size] to Vec<Vec<T>>
@@ -66,12 +68,24 @@ macro_rules! fit {
     };
 }
 
-
 ///blocks in piece
 pub type BlockData = Vec<Vec<Option<Sprite>>>;
 ///piece types
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum PieceType {I, O, T, S, Z, J, L}
+impl PieceType {
+    fn get_data(&self) -> (Vec<Vec<bool>>, [u8;4]) {
+        match *self {
+            PieceType::I => (fit!(I_DATA), I_COLOR),
+            PieceType::J => (fit!(J_DATA), J_COLOR),
+            PieceType::L => (fit!(L_DATA), L_COLOR),
+            PieceType::O => (fit!(O_DATA), O_COLOR),
+            PieceType::T => (fit!(T_DATA), T_COLOR),
+            PieceType::S => (fit!(S_DATA), S_COLOR),
+            PieceType::Z => (fit!(Z_DATA), Z_COLOR),
+        }
+    }
+}
 ///the piece object
 #[derive(Clone)]
 pub struct Piece {                                    //ONLY PUBLIC BECAUSE BENCHMARKING REQUIRED IT TO BE
@@ -98,7 +112,8 @@ impl Piece {
     }
 
     ///generates a piece's block data
-    fn gen_piece(shape: Vec<Vec<bool>>, color: [u8;4]) -> BlockData {
+    fn gen_piece(target: PieceType) -> BlockData {
+        let (shape, color) = target.get_data();
         shape.iter().map(|row|
             row.iter().map(|block|
                 if *block {
@@ -110,86 +125,22 @@ impl Piece {
         ).collect()
     }
 
-    ///generates an I piece
-    fn new_i(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::I,
-            location,
-            data: Self::gen_piece(fit!(I_DATA), I_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates an O piece
-    fn new_o(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::O,
-            location,
-            data: Self::gen_piece(fit!(O_DATA), O_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates a T piece
-    fn new_t(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::T,
-            location,
-            data: Self::gen_piece(fit!(T_DATA), T_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates an S piece
-    fn new_s(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::S,
-            location,
-            data: Self::gen_piece(fit!(S_DATA), S_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates a Z piece
-    fn new_z(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::Z,
-            location,
-            data: Self::gen_piece(fit!(Z_DATA), Z_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates a J piece
-    fn new_j(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::J,
-            location,
-            data: Self::gen_piece(fit!(J_DATA), J_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates an L piece
-    fn new_l(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::L,
-            location,
-            data: Self::gen_piece(fit!(L_DATA), L_COLOR),
-            can_hold: true,
-        }
-    }
-
     ///attempts to generate a random piece
     pub fn gen_random(location: (isize, isize)) -> Self {
-        match rand::thread_rng().gen_range(0, 7) {
-            0 => {Self::new_i(location)},
-            1 => {Self::new_j(location)},
-            2 => {Self::new_l(location)},
-            3 => {Self::new_o(location)},
-            4 => {Self::new_s(location)},
-            5 => {Self::new_t(location)},
-            _ => {Self::new_z(location)},
+        let type_ = match rand::thread_rng().gen_range(0, 7) {
+            0 => {PieceType::I},
+            1 => {PieceType::J},
+            2 => {PieceType::L},
+            3 => {PieceType::O},
+            4 => {PieceType::T},
+            5 => {PieceType::S},
+            _ => {PieceType::Z},
+        };
+        Self {
+            type_,
+            location,
+            data: Self::gen_piece(type_),
+            can_hold: true,
         }
     }
 
@@ -202,20 +153,7 @@ impl Piece {
                     shadow.data[row][block].as_mut().unwrap().img = sprite.img.iter().map(|y|
                         y.iter().map(|x|
                             if *x != BORDER_COLOR {SHADOW_COLOR}
-                            else {
-                                if SHADOW_BORDER_COLOR == [0x00;4] {
-                                    match self.type_ {
-                                    PieceType::I => {I_COLOR}
-                                    PieceType::O => {O_COLOR}
-                                    PieceType::T => {T_COLOR}
-                                    PieceType::S => {S_COLOR}
-                                    PieceType::Z => {Z_COLOR}
-                                    PieceType::J => {J_COLOR}
-                                    PieceType::L => {L_COLOR}
-                                    }
-                                } else {SHADOW_BORDER_COLOR}
-
-                            }
+                            else {SHADOW_BORDER_COLOR}
                         ).collect()
                     ).collect();
                 }
@@ -243,17 +181,7 @@ impl Piece {
 
     ///resets piece data to original template
     pub fn reset_rotation(&mut self) {
-        self.data = {
-            match self.type_ {
-                PieceType::I => Self::gen_piece(fit!(I_DATA), I_COLOR),
-                PieceType::J => Self::gen_piece(fit!(J_DATA), J_COLOR),
-                PieceType::L => Self::gen_piece(fit!(L_DATA), L_COLOR),
-                PieceType::O => Self::gen_piece(fit!(O_DATA), O_COLOR),
-                PieceType::T => Self::gen_piece(fit!(T_DATA), T_COLOR),
-                PieceType::S => Self::gen_piece(fit!(S_DATA), S_COLOR),
-                PieceType::Z => Self::gen_piece(fit!(Z_DATA), Z_COLOR),
-            }
-        }
+        self.data = Self::gen_piece(self.type_)
     }
 
     ///gets a moved version of the piece
@@ -283,3 +211,27 @@ impl Piece {
         moved
     }
 }
+
+
+
+
+
+
+//piece data must stay on heap because pieces are variably sized...but i wonder if board data could be put to stack... 
+//have master lookup table of piece sprites for drawing. generated on new board and kept at board
+//as i optimize this, stripping for AI may become useless
+pub mod tests {
+    use super::*;
+    
+    pub fn piece_type_get_data(piece: &PieceType) -> (Vec<Vec<bool>>, [u8;4]) {
+        piece.get_data()
+    }
+
+    pub fn piece_gen_block(color: [u8;4]) -> Sprite {
+        Piece::gen_block(color)
+    }
+
+    pub fn piece_gen_piece(piece: PieceType) -> BlockData {
+        Piece::gen_piece(piece)
+    }
+}   

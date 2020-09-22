@@ -1,5 +1,5 @@
-mod pieces;
-mod strip;
+pub mod pieces;
+pub mod strip;
 pub use strip::*;
 
 use dynerr::*;
@@ -196,7 +196,7 @@ impl Board {
             self.set_piece();
             let cleared = self.update_rows();
             self.update_progress(cleared)?;
-            if self.data[0].iter().any(|b| b.is_some()) 
+            if self.data[0].iter().any(|b| b.is_some())
             || !self.next_piece() {
                 self.gameover = true;
             }
@@ -264,7 +264,7 @@ impl Board {
                 let attempt_piece = pieces::Piece::gen_random(self.spawn);
                 if attempt_piece.type_ != self.next_piece.type_ {
                     self.piece = mem::replace(&mut self.next_piece, attempt_piece);
-                    break   
+                    break
                 }
             }
             self.update_shadow();
