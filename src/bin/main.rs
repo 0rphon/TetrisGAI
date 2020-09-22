@@ -10,6 +10,5 @@ fn main() {
         Some(arg) if arg == "--dry" => true,
         _  => false,
     };
-
     tetris::run(train, dry);
 }

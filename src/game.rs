@@ -395,4 +395,8 @@ pub mod tests {
     pub fn check_collision(board: &mut super::Board, piece: &super::pieces::Piece) -> bool {
         board.check_collision(piece)
     }
+
+    pub fn assist_get_piece(board: &super::Board) -> super::pieces::Piece {
+        board.piece.clone()
+    }
 }

@@ -12,5 +12,13 @@ criterion_group!(
     game::board_piece_drop,
     game::board_move_piece, 
     game::board_get_board,
+    game::board_get_highscore,
+    game::board_get_speed,
+    game::board_update,
+    game::board_set_piece,
+    game::board_update_rows,
+    game::board_update_progress,
+    game::board_next_piece,
+    game::board_check_collision,
 );
 criterion_main!(benches);
