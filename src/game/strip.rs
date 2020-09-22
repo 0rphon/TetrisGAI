@@ -42,6 +42,14 @@ impl StrippedPiece {
             can_hold: piece.can_hold,
         }
     }
+
+    fn get_next(board: &Board) -> Self {
+        Self {
+            location: board.spawn,
+            data: StrippedData::strip_piece(&board.piece_index.get(&board.next_piece).unwrap().1),
+            can_hold: true,
+        }
+    }
 }
 
 
@@ -60,7 +68,7 @@ impl StrippedBoard {
     pub fn get(board: &Board) -> Self {
         Self {
             piece: StrippedPiece::get(&board.piece),
-            next_piece: StrippedPiece::get(&board.next_piece),
+            next_piece: StrippedPiece::get_next(board),
             held_piece: if let Some(held) = &board.held_piece {Some(StrippedPiece::get(held))} else {None},
             data: StrippedData::strip_board(&board.data),
             score: board.score,
@@ -85,5 +93,9 @@ pub mod tests {
 
     pub fn stripped_piece_get(piece: &pieces::Piece) -> StrippedPiece {
         StrippedPiece::get(piece)
+    }
+
+    pub fn stripped_piece_get_next(board: &Board) -> StrippedPiece {
+        StrippedPiece::get_next(board)
     }
 }

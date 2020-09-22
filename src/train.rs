@@ -61,7 +61,7 @@ impl DisplayThread {
                     .checked_sub(elapsed)
                     .unwrap_or(0);
                 println!(
-                    "{:02}h{:02}m{:02}s    |    {:>3}    |    {:.02}g/s    |    ETA: {:02}h{:02}m{:02}s",
+                    "{:02}h{:02}m{:02}s    |    {:>3}    |    {:5.02}g/s    |    ETA: {:02}h{:02}m{:02}s",
                     elapsed/3600, (elapsed%3600)/60, elapsed%60,
                     format!("{:02}%",percent),
                     {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}},
@@ -92,7 +92,6 @@ struct GameResult {
     score: usize,
     level: usize,
     placed: usize,
-    speed: usize,
     parameters: Option<ai::AiParameters>,       //an option to cut down on clones.
 }
 
@@ -103,25 +102,23 @@ impl GameResult {
             score:  results.iter().map(|r| r.score).sum::<usize>()/results.len(),
             level:  results.iter().map(|r| r.level).sum::<usize>()/results.len(),
             placed: results.iter().map(|r|r.placed).sum::<usize>()/results.len(),
-            speed:  results.iter().map(|r| r.speed).sum::<usize>()/results.len(),
             parameters: Some(parameters),                                                              //EXPLICIT UNWRAP ON POP
         }
     }
 
     ///prints column labels aligned to formatting
     fn print_header() {
-        println!("RANK |  SCORE  | LEVEL | PLACED |  SPEED | PARAMS");
+        println!("RANK |  SCORE  | LEVEL | PLACED | PARAMS");
     }
 }
 
 impl fmt::Display for GameResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,
-            " {:>7} |  {:>3}  | {:>6} | {:>3?}p/s | {}",
+            " {:>7} |  {:>3}  | {:>6} | {}",
             self.score,
             self.level,
             self.placed,
-            self.speed,
             if let Some(p) = &self.parameters {format!("{}", p)} else {String::new()})
     }
 }
@@ -167,17 +164,16 @@ pub fn train(dry_run: bool) -> DynResult<()> {
     let results = check!(do_generation(generation));
     let elapsed = (Instant::now()-start).as_secs();
 
-    println!("GENERATION COMPLETED IN {:02}h{:02}m{:02}s    |    {:0.2}g/s    |    {:>3}p/s    |    score variation: {}",
+    println!("GENERATION COMPLETED IN {:02}h{:02}m{:02}s    |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
         elapsed/3600, (elapsed%3600)/60, elapsed%60,
         (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
-        results.iter().map(|r| r.speed).sum::<usize>()/BATCH_SIZE,
+        results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
         results[0].score-results[BATCH_SIZE-1].score
     );
     GameResult::print_header();
     for i in 0..5 {
         println!("  {:>2} |{}", i+1, results[i]);
     }
-    println!("{}", results.iter().map(|r| r.placed).sum::<usize>()/results.len());
     Ok(())
 }
 
@@ -212,7 +208,6 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
     for _ in 0..SIM_TIMES {
         let mut sim_board = (*board).clone();
         let mut placed = 0;
-        let start = Instant::now();
         while !sim_board.gameover && sim_board.level < MAX_LEVEL {
             check!(ai_radio.send_board(sim_board.get_board()));
             loop {
@@ -220,9 +215,9 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
                     match ai_input {
                         ai::Move::Left      => {sim_board.move_piece(Move::Left);},
                         ai::Move::Right     => {sim_board.move_piece(Move::Right);},
-                        ai::Move::Rotate    => {sim_board.move_piece(Move::Rotate);}
-                        ai::Move::Drop      => {sim_board.move_piece(Move::Drop);placed+=1;},
-                        ai::Move::Hold      => {check!(sim_board.piece_hold());},
+                        ai::Move::Rotate    => {sim_board.rotate_piece();}
+                        ai::Move::Drop      => {check!(sim_board.drop_piece());placed+=1;},
+                        ai::Move::Hold      => {check!(sim_board.hold_piece());},
                         ai::Move::Restart   => {},
                         ai::Move::None      => {},
                     }
@@ -237,7 +232,6 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
                 score: sim_board.score,
                 level: sim_board.level,
                 placed,
-                speed: placed.checked_div((Instant::now()-start).as_secs() as usize).unwrap_or(0)
             }
         );
         *(progress.lock().unwrap())+=1;
@@ -307,47 +301,16 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //got rid of unnecessary clones in tetris::Board                                            00h05m40s    |    2.94g/s    |    154p/s    |    score variation: 94906
 //condensed functions inside game::pieces                                                   00h05m38s    |    2.96g/s    |    190p/s    |    score variation: 85236
 //removed shadow updates for down and drop                                                  00h02m54s    |    5.75g/s    |    307p/s    |    score variation: 133120
-
+//added sprite index                                                                        00h00m57s    |    17.54g/s    |    154p/s    |    score variation: 88490
+//got rid of unnecessary copies in movement and piece swapping                              00h00m24s    |    41.67g/s    |     43p/s    |    score variation: 81104
 
 //850~ placed per game
 //5 moves~ per place + drop
 //4250 moves ver game
 //update after each move
 
-//per game
-//spent 1.10500 seconds moving
-//spent 1.5759 seconds dropping
-//spent 1.0477525 seconds updating
-//10 sims on 10 threads for 100 games ((games*sims)/threads)*3.5s == 5m49s per run
-
-//4.5092 seconds resetting TOTAL
-
-
-
-//MOVING            260.01us
-//get_down          10.308us
-//check_collision   13.671ns
-//update_shadow     233.69us
-
-//can call get_rotated instead of get_down
-
-//DROPPING                                      1.8714 ms OPTIMIZED TO 247.01us
-//calls move_piece(down) up to 20 times
-//then calls update
-
-//UPDATING via try_update
-//VERY CONFUSING when it passes down check it takes 261us meaning it just moved down
-//BUT WHEN i skip the move down it takes 82us????? which is less than an update should take
-//IF I JUST SKIP THE CHECK FROM MOVE DOWN it takes 232.41us which is less than it should take...
-//calls update()                    261.43us
-//  tries to move down              260.01us
-//      set piece                    99.7 us
-//      update rows                 101.75us
-//      update progress             107.30us
-//      next piece                  170.07us
-
 
 
 //TO OPTIMIZE
-//make pieces vec<vec<bool>> and have the board use a master list of sprites for drawing
 //convert everything to 1d vec (god help us)
+//benchmark AI functions

@@ -74,7 +74,7 @@ pub type GridData = Vec<Vec<bool>>;
 ///list of piece info
 pub type PieceIndex = HashMap<PieceType, (Sprite, Vec<Vec<bool>>)>;
 ///piece types
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum PieceType {I, O, T, S, Z, J, L, Shadow}
 
 impl PieceType {
@@ -112,6 +112,19 @@ impl PieceType {
         }
     }
 
+    //not benched
+    ///gets a random piece type
+    pub fn pick_random() -> Self {
+        match rand::thread_rng().gen_range(0, 7) {
+            0 => Self::I,
+            1 => Self::J,
+            2 => Self::L,
+            3 => Self::O,
+            4 => Self::T,
+            5 => Self::S,
+            _ => Self::Z,
+        }
+    }
     
     //only run during board creating so i didnt bother benchmarking
     ///generates hashmap index of pieces and their associated data
@@ -135,17 +148,8 @@ pub struct Piece {                                    //ONLY PUBLIC BECAUSE BENC
 }
 impl Piece {
 
-    ///attempts to generate a random piece
-    pub fn gen_random(location: (isize, isize), index: &PieceIndex) -> Self {
-        let type_ = match rand::thread_rng().gen_range(0, 7) {
-            0 => {PieceType::I},
-            1 => {PieceType::J},
-            2 => {PieceType::L},
-            3 => {PieceType::O},
-            4 => {PieceType::T},
-            5 => {PieceType::S},
-            _ => {PieceType::Z},
-        };
+    ///generates the given piece type at the given location
+    pub fn gen_piece(type_: PieceType, location: (isize, isize), index: &PieceIndex) -> Self {
         Self {
             type_,
             location,
@@ -177,30 +181,18 @@ impl Piece {
     }
 
     ///gets a moved version of the piece
-    pub fn get_down(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(y) = moved.location.1.checked_add(1) {
-            moved.location.1 = y;
-        }
-        moved
+    pub fn get_down(&self) -> (isize, isize) {
+        (self.location.0, self.location.1+1)
     }
 
     ///gets a moved version of the piece
-    pub fn get_left(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(x) = moved.location.0.checked_sub(1) {
-            moved.location.0 = x;
-        }
-        moved
+    pub fn get_left(&self) -> (isize, isize) {
+        (self.location.0-1, self.location.1)
     }
 
     ///gets a moved version of the piece
-    pub fn get_right(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(x) = moved.location.0.checked_add(1) {
-            moved.location.0 = x;
-        }
-        moved
+    pub fn get_right(&self) -> (isize, isize) {
+        (self.location.0+1, self.location.1)
     }
 }
 

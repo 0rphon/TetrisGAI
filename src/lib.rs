@@ -73,9 +73,9 @@ pub fn run(train: bool, dry: bool) {
                         //ai::Move::Down      => {board.move_piece(Move::Down);},
                         ai::Move::Left      => {board.move_piece(Move::Left);},
                         ai::Move::Right     => {board.move_piece(Move::Right);},
-                        ai::Move::Rotate    => {board.move_piece(Move::Rotate);}
-                        ai::Move::Drop      => {board.move_piece(Move::Drop);},
-                        ai::Move::Hold      => {check!(board.piece_hold());},
+                        ai::Move::Rotate    => {board.rotate_piece();}
+                        ai::Move::Drop      => {check!(board.drop_piece());},
+                        ai::Move::Hold      => {check!(board.hold_piece());},
                         ai::Move::Restart   => {},//check!(board.reset()),
                         ai::Move::None      => {},
                     }
@@ -98,15 +98,15 @@ pub fn run(train: bool, dry: bool) {
                 || input.key_pressed(engine::game::VirtualKeyCode::R)
                 || input.key_pressed(engine::game::VirtualKeyCode::X)
                 || input.key_pressed(engine::game::VirtualKeyCode::Up)
-                {board.move_piece(Move::Rotate);}
+                {board.rotate_piece();}
 
 
                 if input.key_pressed(engine::game::VirtualKeyCode::F)
                 ||input.key_pressed(engine::game::VirtualKeyCode::C)
-                {check!(board.piece_hold());}
+                {check!(board.hold_piece());}
 
                 if input.key_pressed(engine::game::VirtualKeyCode::Space)
-                {check!(board.piece_drop());}
+                {check!(board.drop_piece());}
             }
             if input.key_pressed(engine::game::VirtualKeyCode::Return)
             || input.key_pressed(engine::game::VirtualKeyCode::NumpadEnter)
@@ -129,9 +129,8 @@ pub fn run(train: bool, dry: bool) {
             }
 
             //handles updating
-            if check!(board.try_update()) && ai_radio.is_some(){
-                check!(ai_radio.as_ref().unwrap().send_board(board.get_board()));
-            }
+            if ai_radio.is_some() {check!(ai_radio.as_ref().unwrap().send_board(board.get_board()))} 
+            else {check!(board.try_update());}
             window.window.request_redraw();
         }
     });
