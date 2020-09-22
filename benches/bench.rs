@@ -15,6 +15,7 @@ criterion_group!(
     game::board_move_piece,
     game::board_get_board,
     game::board_get_highscore,
+    game::board_update_shadow,
     game::board_get_speed,
     game::board_update,
     game::board_set_piece,
@@ -33,7 +34,7 @@ criterion_group!(
     pieces::piece_get_down,
     pieces::piece_get_left,
     pieces::piece_get_right,
-
+    
     strip::stripped_data_get,
     strip::stripped_piece_get,
     strip::stripped_board_get,

@@ -30,7 +30,7 @@ const GAME_OVER_COLOR:      [u8;4]          = [0xFF;4];
 
 
 ///possible piece movements
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Move {
     Down,
     Left,
@@ -143,7 +143,9 @@ impl Board {
         };
         if !self.check_collision(&moved) {
             self.piece = moved;
-            self.update_shadow();
+            if direction != Move::Down {
+                self.update_shadow();
+            }
             true
         } else {false}
     }

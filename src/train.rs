@@ -177,7 +177,7 @@ pub fn train(dry_run: bool) -> DynResult<()> {
     for i in 0..5 {
         println!("  {:>2} |{}", i+1, results[i]);
     }
-
+    println!("{}", results.iter().map(|r| r.placed).sum::<usize>()/results.len());
     Ok(())
 }
 
@@ -246,16 +246,7 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
     GameResult::get_averaged(results, parameters)
 }
 
-//cargo run --release -- --train
-
-
-
-
-
-
-
-
-
+//cargo run --release -- --train --dry
 
 
 
@@ -314,3 +305,49 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //                                                                                          00h07m03s    |    2.36g/s    |    173p/s    |    score variation: 113170
 //REVERTED CONSTANTS FOR INDEXING                                                           00h06m30s    |    2.56g/s    |    169p/s    |    score variation: 80768
 //got rid of unnecessary clones in tetris::Board                                            00h05m40s    |    2.94g/s    |    154p/s    |    score variation: 94906
+//condensed functions inside game::pieces                                                   00h05m38s    |    2.96g/s    |    190p/s    |    score variation: 85236
+//removed shadow updates for down and drop                                                  00h02m54s    |    5.75g/s    |    307p/s    |    score variation: 133120                                               
+
+
+//850~ placed per game
+//5 moves~ per place + drop
+//4250 moves ver game
+//update after each move
+
+//per game
+//spent 1.10500 seconds moving
+//spent 1.5759 seconds dropping
+//spent 1.0477525 seconds updating
+//10 sims on 10 threads for 100 games ((games*sims)/threads)*3.5s == 5m49s per run
+
+//4.5092 seconds resetting TOTAL
+
+
+
+//MOVING            260.01us
+//get_down          10.308us
+//check_collision   13.671ns
+//update_shadow     233.69us
+
+//can call get_rotated instead of get_down
+
+//DROPPING                                      1.8714 ms
+//calls move_piece(down) up to 20 times         260.01usx15~ = 3.9ms???
+//then calls update                             261.43us
+
+//UPDATING via try_update
+//VERY CONFUSING when it passes down check it takes 261us meaning it just moved down
+//BUT WHEN i skip the move down it takes 82us????? which is less than an update should take
+//IF I JUST SKIP THE CHECK FROM MOVE DOWN it takes 232.41us which is less than it should take...
+//calls update()                    261.43us
+//  tries to move down              260.01us
+//      set piece                    99.7 us
+//      update rows                 101.75us
+//      update progress             107.30us
+//      next piece                  170.07us
+
+
+
+//TO OPTIMIZE
+//could only update shadow on left/right/rotate
+//
