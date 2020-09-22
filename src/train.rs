@@ -22,15 +22,23 @@ use threadpool::ThreadPool;
 //};
 
 
+//10x200  0:54 var 103764
+//15x200  1:19 var 78181
+//20x200  1:44 var 61896
+//25x200  2:08 var 57244
+//50x200  4:11 var 53444
+//100x200 8:38 var 38744
 
 ///times to run each AIs game
-const SIM_TIMES: usize      = 10;
+const SIM_TIMES: usize      = 25;
 ///how many game sims can be running at once
 const POOL_SIZE: usize      = 10;
 ///generation size
-const BATCH_SIZE: usize     = 100;
+const BATCH_SIZE: usize     = 200;
+///how many generations to run
+const GENERATIONS: usize    = 200;
 ///max level before timeout
-const MAX_LEVEL: usize      = 100;
+const MAX_LEVEL: usize      = 50;
 ///how often to update screen
 const DISPLAY_INTERVAL: usize = 13;
 
@@ -52,6 +60,10 @@ impl DisplayThread {
             let start = Instant::now();
             let mut last_progress = 0;
             loop {
+                for _ in 0..DISPLAY_INTERVAL {
+                    if let Ok(true) = rx.try_recv() {return}
+                    thread::sleep(Duration::from_secs(1))
+                }
                 let elapsed = (Instant::now()-start).as_secs();
                 let progress = {let p = prog.lock().unwrap(); *p};
                 let percent = ((progress as f32/(SIM_TIMES*BATCH_SIZE) as f32)*100.0) as usize;
@@ -68,10 +80,6 @@ impl DisplayThread {
                     eta/3600, (eta%3600)/60, eta%60
                 );
                 last_progress = progress;
-                for _ in 0..DISPLAY_INTERVAL {
-                    if let Ok(true) = rx.try_recv() {return}
-                    thread::sleep(Duration::from_secs(1))
-                }
             }
         });
         Self {tx, handle}
@@ -126,53 +134,80 @@ impl fmt::Display for GameResult {
 
 ///does the actual training
 pub fn train(dry_run: bool) -> DynResult<()> {
-    let generation = {
-        if dry_run {
-            println!("Starting Dry Run");
-            (0..BATCH_SIZE).map(|_| {
-                ai::AiParameters {
-                    points_scored_importance:       0.50,
-                    piece_depth_importance:         0.25,
-                    max_height_importance:          0.75,
-                    avg_height_importance:          0.0,
-                    height_variation_importance:    0.5,
-                    current_holes_importance:       3.5,
-                    max_pillar_height:              2,
-                    current_pillars_importance:     0.75,
-                }
-            }).collect::<Vec<ai::AiParameters>>()
-        } else {
-            println!("Starting Live Run");
-            let mut rng = rand::thread_rng();
-            (0..BATCH_SIZE).map(|_| {
-                ai::AiParameters {
-                    points_scored_importance:       rng.gen_range(0.0,1.0),
-                    piece_depth_importance:         rng.gen_range(0.0,1.0),
-                    max_height_importance:          rng.gen_range(0.0,1.0),
-                    avg_height_importance:          rng.gen_range(0.0,1.0),
-                    height_variation_importance:    rng.gen_range(0.0,1.0),
-                    current_holes_importance:       rng.gen_range(0.0,1.0),
-                    max_pillar_height:              rng.gen_range(0,5),
-                    current_pillars_importance:     rng.gen_range(0.0,1.0),
-                }
-            }).collect::<Vec<ai::AiParameters>>()
+    if dry_run {println!("Starting Dry Run")}
+    else {println!("Starting Live Run")}
+    let mut best_results = Vec::new();
+    let total_start = Instant::now();
+    for gen in 0..GENERATIONS {
+        println!("STARTING GENERATION {}", gen+1);
+        let generation = {
+            if dry_run {
+                (0..BATCH_SIZE).map(|_| {
+                    ai::AiParameters {
+                        points_scored_importance:       0.50,
+                        piece_depth_importance:         0.25,
+                        max_height_importance:          0.75,
+                        avg_height_importance:          0.0,
+                        height_variation_importance:    0.5,
+                        current_holes_importance:       3.5,
+                        max_pillar_height:              2,
+                        current_pillars_importance:     0.75,
+                    }
+                }).collect::<Vec<ai::AiParameters>>()
+            } else {
+                let mut rng = rand::thread_rng();
+                (0..BATCH_SIZE).map(|_| {
+                    ai::AiParameters {
+                        points_scored_importance:       rng.gen_range(0.0,1.0),
+                        piece_depth_importance:         rng.gen_range(0.0,1.0),
+                        max_height_importance:          rng.gen_range(0.0,1.0),
+                        avg_height_importance:          rng.gen_range(0.0,1.0),
+                        height_variation_importance:    rng.gen_range(0.0,1.0),
+                        current_holes_importance:       rng.gen_range(0.0,1.0),
+                        max_pillar_height:              rng.gen_range(0,5),
+                        current_pillars_importance:     rng.gen_range(0.0,1.0),
+                    }
+                }).collect::<Vec<ai::AiParameters>>()
+            }
+        };
+        
+        
+        let start = Instant::now();
+        let mut results = check!(do_generation(generation));
+        let elapsed = (Instant::now()-start).as_secs();
+        println!("GENERATION {} COMPLETED IN {:02}h{:02}m{:02}s       |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
+            gen+1,
+            elapsed/3600, (elapsed%3600)/60, elapsed%60,
+            (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
+            results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
+            results[0].score-results[BATCH_SIZE-1].score
+        );
+        let total_elapsed = (Instant::now()-total_start).as_secs();
+        let eta = ((GENERATIONS as u64 * elapsed)
+                    .checked_div(gen as u64)
+                    .unwrap_or(0))
+                    .checked_sub(total_elapsed)
+                    .unwrap_or(0);
+        println!("ELAPSED: {:02}d{:02}h{:02}m{:02}s           |           TOTAL ETA: {:02}d{:02}h{:02}m{:02}s",
+            total_elapsed/86400, (total_elapsed%86400)/3600, (total_elapsed%3600)/60, total_elapsed%60,
+            eta/86400, (eta%86400)/3600, (eta%3600)/60, eta%60,
+        );
+        GameResult::print_header();
+        for i in 0..3 {
+            println!("  {:>2} |{}", i+1, results[i]);
+            best_results.push(results.remove(i));
         }
-    };
+        println!("\n");
+    }
+    let total_elapsed = Instant::now()-total_start;
+    println!("{} generations completed in {:?}", GENERATIONS, total_elapsed);
+    println!("Average of 1 generation every {:?}", total_elapsed/GENERATIONS as u32);
 
-
-    let start = Instant::now();
-    let results = check!(do_generation(generation));
-    let elapsed = (Instant::now()-start).as_secs();
-
-    println!("GENERATION COMPLETED IN {:02}h{:02}m{:02}s    |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
-        elapsed/3600, (elapsed%3600)/60, elapsed%60,
-        (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
-        results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
-        results[0].score-results[BATCH_SIZE-1].score
-    );
+    best_results.sort_by(|a, b| b.score.cmp(&a.score));
+    println!("BEST RESULTS");
     GameResult::print_header();
-    for i in 0..5 {
-        println!("  {:>2} |{}", i+1, results[i]);
+    for i in 0..10 {
+        println!("  {:>2} |{}", i+1, best_results[i]);
     }
     Ok(())
 }
@@ -195,8 +230,7 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
 
     let mut results = rx.iter().take(BATCH_SIZE).collect::<Vec<GameResult>>();
     display_thread.stop()?;
-    results.sort_by(|a, b| a.score.cmp(&b.score));
-    results.reverse();
+    results.sort_by(|a, b| b.score.cmp(&a.score));
     Ok(results)
 }
 
