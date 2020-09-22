@@ -38,7 +38,7 @@ pub enum Move {
     Rotate,
     Drop,
 }
-
+pub type BoardData = Vec<Vec<Option<pieces::PieceType>>>;
 ///the board object                                         SHOULD SPLIT UP INTO SEPARATE STRUCTS THAT THE BOARD CAN INTERACT WITH. LIKE "BoardPieces" AND "BoardState"
 #[derive(Clone)]
 pub struct Board {
@@ -47,7 +47,8 @@ pub struct Board {
     next_piece: pieces::Piece,
     held_piece: Option<pieces::Piece>,
     spawn: (isize, isize),
-    data:   pieces::BlockData,
+    data:   BoardData,
+    piece_index: pieces::PieceIndex,
     backdrop: Sprite,
     pub dimensions: (usize, usize),
     padding: usize,
@@ -63,12 +64,14 @@ impl Board {
     ///attempts to create a new standard sized board
     pub fn new_board() -> DynResult<Self> {
         let spawn = (BOARD_WIDTH as isize/2-2, 0);
+        let piece_index = pieces::PieceType::gen_piece_index();
         let mut board = Self {
-            piece: pieces::Piece::gen_random(spawn),
-            shadow: pieces::Piece::gen_random(spawn),
-            next_piece: pieces::Piece::gen_random(spawn),
+            piece: pieces::Piece::gen_random(spawn, &piece_index),
+            shadow: pieces::Piece::gen_random(spawn, &piece_index),
+            next_piece: pieces::Piece::gen_random(spawn, &piece_index),
             held_piece: None,
             spawn,
+            piece_index,
             backdrop: Sprite::load(BOARD_SPRITE)?,
             dimensions: (0,0),
             padding: BOARD_PAD*pieces::BLOCK_SIZE,
@@ -103,7 +106,7 @@ impl Board {
         if !self.gameover {
             if self.piece.can_hold {
                 self.piece.location = self.spawn;
-                self.piece.reset_rotation();
+                self.piece.reset_rotation(&self.piece_index);
                 if let Some(held) = self.held_piece.take(){
                     self.held_piece = Some(mem::replace(&mut self.piece, held));
                 }
@@ -152,7 +155,8 @@ impl Board {
 
     ///updates the shadow piece
     fn update_shadow(&mut self) {
-        let mut shadow = self.piece.get_shadow();
+        let mut shadow = self.piece.clone();
+        shadow.type_ = pieces::PieceType::Shadow;
         loop {
             let moved = shadow.get_down();
             if !self.check_collision(&moved) {shadow = moved}
@@ -210,11 +214,11 @@ impl Board {
     fn set_piece(&mut self) {
         for row in 0..self.piece.data.len() {
             for block in 0..self.piece.data[row].len() {
-                if let Some(_) = self.piece.data[row][block] {
+                if self.piece.data[row][block] {
                     if let Some(y) = self.data.get_mut((self.piece.location.1+row as isize) as usize) {                //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
                         if let Some(x) = y.get_mut((self.piece.location.0+block as isize) as usize) {                  //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                            *x = self.piece.data[row][block].take();
-                            self.shadow.data[row][block] = None;
+                            *x = Some(self.piece.type_);
+                            self.shadow.data[row][block] = false;
                         }
                     }
                 }
@@ -263,7 +267,7 @@ impl Board {
     fn next_piece(&mut self) -> bool {
         if !self.check_collision(&self.next_piece) {
             loop {
-                let attempt_piece = pieces::Piece::gen_random(self.spawn);
+                let attempt_piece = pieces::Piece::gen_random(self.spawn, &self.piece_index);
                 if attempt_piece.type_ != self.next_piece.type_ {
                     self.piece = mem::replace(&mut self.next_piece, attempt_piece);
                     break
@@ -278,10 +282,10 @@ impl Board {
     fn check_collision(&self, piece: &pieces::Piece) -> bool {
         for row in 0..piece.data.len() {
             for block in 0..piece.data[row].len() {
-                if let Some(_) = piece.data[row][block] {
+                if piece.data[row][block] {
                     if let Some(y) = self.data.get((piece.location.1+row as isize) as usize) {          //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
                         if let Some(x) = y.get((piece.location.0+block as isize) as usize) {            //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                            if let Some(_) = x {return true}
+                            if x.is_some() {return true}
                         } else {return true}
                     } else {return true}
                 }
@@ -303,7 +307,8 @@ impl Board {
         //draw set blocks
         for row in 0..self.data.len() {
             for block in 0..self.data[row].len() {
-                if let Some(sprite) = &self.data[row][block] {
+                if let Some(type_) = &self.data[row][block] {
+                    let sprite = &self.piece_index.get(&type_).unwrap().0;
                     screen.draw_sprite(sprite, (((block*sprite.width)+self.padding) as isize, (row*sprite.height) as isize))
                 }
             }
@@ -312,7 +317,8 @@ impl Board {
         let mut draw_piece = |piece: &pieces::Piece, location: (isize, isize), padding: usize| {
             for row in 0..piece.data.len() {
                 for block in 0..piece.data[row].len() {
-                    if let Some(sprite) = &piece.data[row][block] {
+                    if piece.data[row][block] {
+                        let sprite = &self.piece_index.get(&piece.type_).unwrap().0;
                         screen.draw_sprite(
                             sprite,
                             (
@@ -400,5 +406,9 @@ pub mod tests {
 
     pub fn assist_get_piece(board: &super::Board) -> super::pieces::Piece {
         board.piece.clone()
+    }
+
+    pub fn assist_get_board_data(board: &super::Board) -> super::BoardData {
+        board.data.clone()
     }
 }

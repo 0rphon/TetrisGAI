@@ -306,7 +306,7 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //REVERTED CONSTANTS FOR INDEXING                                                           00h06m30s    |    2.56g/s    |    169p/s    |    score variation: 80768
 //got rid of unnecessary clones in tetris::Board                                            00h05m40s    |    2.94g/s    |    154p/s    |    score variation: 94906
 //condensed functions inside game::pieces                                                   00h05m38s    |    2.96g/s    |    190p/s    |    score variation: 85236
-//removed shadow updates for down and drop                                                  00h02m54s    |    5.75g/s    |    307p/s    |    score variation: 133120                                               
+//removed shadow updates for down and drop                                                  00h02m54s    |    5.75g/s    |    307p/s    |    score variation: 133120
 
 
 //850~ placed per game
@@ -331,9 +331,9 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 
 //can call get_rotated instead of get_down
 
-//DROPPING                                      1.8714 ms
-//calls move_piece(down) up to 20 times         260.01usx15~ = 3.9ms???
-//then calls update                             261.43us
+//DROPPING                                      1.8714 ms OPTIMIZED TO 247.01us
+//calls move_piece(down) up to 20 times
+//then calls update
 
 //UPDATING via try_update
 //VERY CONFUSING when it passes down check it takes 261us meaning it just moved down
@@ -349,5 +349,5 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 
 
 //TO OPTIMIZE
-//could only update shadow on left/right/rotate
-//
+//make pieces vec<vec<bool>> and have the board use a master list of sprites for drawing
+//convert everything to 1d vec (god help us)

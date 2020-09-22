@@ -24,18 +24,15 @@ criterion_group!(
     game::board_next_piece,
     game::board_check_collision,
     
-    pieces::piece_type_get_data,
-    pieces::piece_gen_block,
-    pieces::piece_gen_piece,
     pieces::piece_gen_random,
-    pieces::piece_get_shadow,
     pieces::piece_get_rotated,
     pieces::piece_reset_rotation,
     pieces::piece_get_down,
     pieces::piece_get_left,
     pieces::piece_get_right,
     
-    strip::stripped_data_get,
+    strip::stripped_data_strip_board,
+    strip::stripped_data_strip_piece,
     strip::stripped_piece_get,
     strip::stripped_board_get,
 );
