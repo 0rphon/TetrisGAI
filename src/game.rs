@@ -1,23 +1,15 @@
+mod pieces;
+mod strip;
+pub use strip::*;
+
 use dynerr::*;
 use engine::sprite::Sprite;
 use engine::drawing;
 
-use rand::Rng;
-use std::{fmt, error};
+
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::mem;
-
-///the size of each block. used to calc grid
-const BLOCK_SIZE:           usize           = 32;
-///the thickness of piece border in pixels
-const BORDER_SIZE:          usize           = 2;
-///the color of piece borders
-const BORDER_COLOR:         [u8;4]          = [0x00, 0x00, 0x00, 0xFF];
-///the color of shadow
-const SHADOW_COLOR:         [u8;4]          = [0x00;4];
-///the color of the shadows border
-const SHADOW_BORDER_COLOR:  [u8;4]          = [0xDC, 0xDC, 0xDC, 0xFF];     //[0X00;4] TO USE THE PIECE COLOR FOR SHADOW BORDER
 
 ///width of board in blocks
 const BOARD_WIDTH:          usize           = 10;
@@ -36,308 +28,6 @@ const GAME_OVER_COLOR:      [u8;4]          = [0xFF;4];
 
 
 
-const I_COLOR: [u8;4] = [0x00, 0xFF, 0xFF, 0xFF];
-const I_DATA: [&[bool;4];4] = [
-    &[false, false, false, false],
-    &[true , true , true , true ],
-    &[false, false, false, false],
-    &[false, false, false, false],
-];
-const O_COLOR: [u8;4] = [0xFF, 0xFF, 0x00, 0xFF];
-const O_DATA: [&[bool;2];2] = [
-    &[true , true],
-    &[true , true],
-];
-const T_COLOR: [u8;4] = [0x80, 0x00, 0x80, 0xFF];
-const T_DATA: [&[bool;3];3] = [
-    &[false, true , false],
-    &[true , true , true ],
-    &[false, false, false],
-];
-const S_COLOR: [u8;4] = [0x00, 0x80, 0x00, 0xFF];
-const S_DATA: [&[bool;3];3] = [
-    &[false, true , true ],
-    &[true , true , false],
-    &[false, false, false],
-];
-const Z_COLOR: [u8;4] = [0xFF, 0x00, 0x00, 0xFF];
-const Z_DATA: [&[bool;3];3] = [
-    &[true , true , false],
-    &[false, true , true ],
-    &[false, false, false],
-];
-const J_COLOR: [u8;4] = [0x00, 0x00, 0xFF, 0xFF];
-const J_DATA: [&[bool;3];3] = [
-    &[true , false, false],
-    &[true , true , true ],
-    &[false, false, false],
-];
-const L_COLOR: [u8;4] = [0xFF, 0xA5, 0x00, 0xFF];
-const L_DATA: [&[bool;3];3] = [
-    &[false, false, true ],
-    &[true , true , true ],
-    &[false, false, false],
-];
-
-///converts [&[T; Size]; Size] to Vec<Vec<T>>
-macro_rules! fit {
-    ($x:expr) => {
-        $x.iter().map(|y| y.to_vec()).collect::<Vec<_>>()
-    };
-}
-
-///a custom error type
-#[derive(Debug)]
-enum TetrisError {
-    SpawnError((isize, isize)),
-    GenerationError(u32),
-}
-//impl display formatting for error
-impl fmt::Display for TetrisError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TetrisError::SpawnError((x,y))      => write!(f, "TetrisError::SpawnError: failed to spawn piece at x:{} y:{}", x, y),
-            TetrisError::GenerationError(i)     => write!(f, "TetrisError::GenerationError: random number generator returned invalid value: {}", i),
-        }
-    }
-}
-//impl error conversion for error
-impl error::Error for TetrisError {}
-
-
-
-
-
-
-
-
-
-
-
-///blocks in piece
-type BlockData = Vec<Vec<Option<Sprite>>>;
-///piece types
-#[derive(Clone, PartialEq)]
-enum PieceType {I, O, T, S, Z, J, L}
-///the piece object
-#[derive(Clone)]
-pub struct Piece {                                    //ONLY PUBLIC BECAUSE BENCHMARKING REQUIRED IT TO BE
-    type_: PieceType,
-    location: (isize, isize),
-    data: BlockData,
-    can_hold: bool,
-}
-impl Piece {
-    ///generates a colored block with a border
-    fn gen_block(color: [u8;4]) -> Sprite {
-        let mut block = vec!(vec!(color; BLOCK_SIZE); BLOCK_SIZE);
-        for row_i in 0..BLOCK_SIZE {
-            for pixel_i in 0..BLOCK_SIZE {
-                if (0..BORDER_SIZE).contains(&row_i)
-                || (0..BORDER_SIZE).contains(&pixel_i)
-                || (BLOCK_SIZE-BORDER_SIZE..BLOCK_SIZE).contains(&row_i)
-                || (BLOCK_SIZE-BORDER_SIZE..BLOCK_SIZE).contains(&pixel_i) {
-                    block[row_i][pixel_i] = BORDER_COLOR;
-                }
-            }
-        }
-        Sprite::add(BLOCK_SIZE, BLOCK_SIZE, block)
-    }
-
-    ///generates a piece's block data
-    fn gen_piece(shape: Vec<Vec<bool>>, color: [u8;4]) -> BlockData {
-        shape.iter().map(|row|
-            row.iter().map(|block|
-                if *block {
-                    Some(Self::gen_block(color))
-                } else {
-                    None
-                }
-            ).collect()
-        ).collect()
-    }
-
-    ///generates an I piece
-    fn new_i(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::I,
-            location,
-            data: Self::gen_piece(fit!(I_DATA), I_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates an O piece
-    fn new_o(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::O,
-            location,
-            data: Self::gen_piece(fit!(O_DATA), O_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates a T piece
-    fn new_t(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::T,
-            location,
-            data: Self::gen_piece(fit!(T_DATA), T_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates an S piece
-    fn new_s(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::S,
-            location,
-            data: Self::gen_piece(fit!(S_DATA), S_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates a Z piece
-    fn new_z(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::Z,
-            location,
-            data: Self::gen_piece(fit!(Z_DATA), Z_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates a J piece
-    fn new_j(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::J,
-            location,
-            data: Self::gen_piece(fit!(J_DATA), J_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///generates an L piece
-    fn new_l(location: (isize, isize)) -> Self {
-        Self {
-            type_: PieceType::L,
-            location,
-            data: Self::gen_piece(fit!(L_DATA), L_COLOR),
-            can_hold: true,
-        }
-    }
-
-    ///attempts to generate a random piece
-    fn gen_random(location: (isize, isize)) -> DynResult<Self> {
-        match rand::thread_rng().gen_range(0, 7) {
-            0 => {Ok(Self::new_i(location))},
-            1 => {Ok(Self::new_j(location))},
-            2 => {Ok(Self::new_l(location))},
-            3 => {Ok(Self::new_o(location))},
-            4 => {Ok(Self::new_s(location))},
-            5 => {Ok(Self::new_t(location))},
-            6 => {Ok(Self::new_z(location))},
-            i => dynerr!(TetrisError::GenerationError(i))
-        }
-    }
-
-    ///gets the shadow of a piece
-    fn get_shadow(&self) -> Piece {
-        let mut shadow = self.clone();
-        for row in 0..shadow.data.len() {
-            for block in 0..shadow.data[row].len() {
-                if let Some(sprite) = &shadow.data[row][block] {
-                    shadow.data[row][block].as_mut().unwrap().img = sprite.img.iter().map(|y|
-                        y.iter().map(|x|
-                            if *x != BORDER_COLOR {SHADOW_COLOR}
-                            else {
-                                if SHADOW_BORDER_COLOR == [0x00;4] {
-                                    match self.type_ {
-                                    PieceType::I => {I_COLOR}
-                                    PieceType::O => {O_COLOR}
-                                    PieceType::T => {T_COLOR}
-                                    PieceType::S => {S_COLOR}
-                                    PieceType::Z => {Z_COLOR}
-                                    PieceType::J => {J_COLOR}
-                                    PieceType::L => {L_COLOR}
-                                    }
-                                } else {SHADOW_BORDER_COLOR}
-
-                            }
-                        ).collect()
-                    ).collect();
-                }
-            }
-        }
-        shadow
-    }
-
-    ///gets a rotated version of the piece
-    fn get_rotated(&self) -> Piece {
-        let height = self.data.len();
-        let width = self.data[0].len();                                         //UNCHECKED INDEX
-        let mut r = self.clone();
-        for row in 0..height {
-            for block in 0..width {
-                if let Some(sprite) = &self.data[row][block] {
-                    r.data[block][width-row-1] = Some(sprite.clone());
-                } else {
-                    r.data[block][width-row-1] = None;
-                }
-            }
-        }
-        r
-    }
-
-    ///resets piece data to original template
-    fn reset_rotation(&mut self) {
-        self.data = {
-            match self.type_ {
-                PieceType::I => Self::gen_piece(fit!(I_DATA), I_COLOR),
-                PieceType::J => Self::gen_piece(fit!(J_DATA), J_COLOR),
-                PieceType::L => Self::gen_piece(fit!(L_DATA), L_COLOR),
-                PieceType::O => Self::gen_piece(fit!(O_DATA), O_COLOR),
-                PieceType::T => Self::gen_piece(fit!(T_DATA), T_COLOR),
-                PieceType::S => Self::gen_piece(fit!(S_DATA), S_COLOR),
-                PieceType::Z => Self::gen_piece(fit!(Z_DATA), Z_COLOR),
-            }
-        }
-    }
-
-    ///gets a moved version of the piece
-    fn get_down(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(y) = moved.location.1.checked_add(1) {
-            moved.location.1 = y;
-        }
-        moved
-    }
-
-    ///gets a moved version of the piece
-    fn get_left(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(x) = moved.location.0.checked_sub(1) {
-            moved.location.0 = x;
-        }
-        moved
-    }
-
-    ///gets a moved version of the piece
-    fn get_right(&self) -> Self {
-        let mut moved = self.clone();
-        if let Some(x) = moved.location.0.checked_add(1) {
-            moved.location.0 = x;
-        }
-        moved
-    }
-}
-
-
-
-
-
-
-
 
 ///possible piece movements
 #[derive(Debug, Clone, Copy)]
@@ -352,12 +42,12 @@ pub enum Move {
 ///the board object                                         SHOULD SPLIT UP INTO SEPARATE STRUCTS THAT THE BOARD CAN INTERACT WITH. LIKE "BoardPieces" AND "BoardState"
 #[derive(Clone)]
 pub struct Board {
-    piece:  Piece,
-    shadow: Piece,
-    next_piece: Piece,
-    held_piece: Option<Piece>,
+    piece:  pieces::Piece,
+    shadow: pieces::Piece,
+    next_piece: pieces::Piece,
+    held_piece: Option<pieces::Piece>,
     spawn: (isize, isize),
-    data:   BlockData,
+    data:   pieces::BlockData,
     backdrop: Sprite,
     pub dimensions: (usize, usize),
     padding: usize,
@@ -374,14 +64,14 @@ impl Board {
     pub fn new_board() -> DynResult<Self> {
         let spawn = (BOARD_WIDTH as isize/2-2, 0);
         let mut board = Self {
-            piece: Piece::gen_random(spawn)?,
-            shadow: Piece::gen_random(spawn)?,
-            next_piece: Piece::gen_random(spawn)?,
+            piece: pieces::Piece::gen_random(spawn),
+            shadow: pieces::Piece::gen_random(spawn),
+            next_piece: pieces::Piece::gen_random(spawn),
             held_piece: None,
             spawn,
             backdrop: Sprite::load(BOARD_SPRITE)?,
             dimensions: (0,0),
-            padding: BOARD_PAD*BLOCK_SIZE,
+            padding: BOARD_PAD*pieces::BLOCK_SIZE,
             data: vec!(vec!(None; BOARD_WIDTH); BOARD_HEIGHT),
             score: 0,
             highscore: Self::get_highscore()?,
@@ -419,7 +109,7 @@ impl Board {
                 }
                 else {
                     self.held_piece = Some(self.piece.clone());
-                    self.next_piece()?;
+                    self.next_piece();
                 }
                 self.piece.can_hold = false;
                 self.update_shadow();
@@ -503,42 +193,31 @@ impl Board {
     /// does game updates
     fn update(&mut self) -> DynResult<()> {
         if !self.move_piece(Move::Down) {
-            self.set_piece()?;
+            self.set_piece();
             let cleared = self.update_rows();
             self.update_progress(cleared)?;
-            if self.data[0].iter().any(|b| b.is_some()) {
+            if self.data[0].iter().any(|b| b.is_some()) 
+            || !self.next_piece() {
                 self.gameover = true;
-            } else {
-                if let Err(e) = self.next_piece() {
-                    dynmatch!(e,
-                        type TetrisError {
-                            arm TetrisError::SpawnError(_) => {
-                                self.gameover = true;
-                            },
-                            _ => return Err(e)
-                        },
-                        _ => return Err(e)
-                    )
-                } else {self.update_shadow()}
             }
         }
         Ok(())
     }
 
     ///consumes current piece and attempts to set piece
-    fn set_piece(&mut self) -> DynResult<()>{
+    fn set_piece(&mut self) {
         for row in 0..self.piece.data.len() {
             for block in 0..self.piece.data[row].len() {
                 if let Some(_) = self.piece.data[row][block] {
                     if let Some(y) = self.data.get_mut((self.piece.location.1+row as isize) as usize) {                //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
                         if let Some(x) = y.get_mut((self.piece.location.0+block as isize) as usize) {                  //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
                             *x = self.piece.data[row][block].take();
+                            self.shadow.data[row][block] = None;
                         }
                     }
                 }
             }
         }
-        Ok(())
     }
 
     ///checks for filled rows and removes them
@@ -578,24 +257,23 @@ impl Board {
         Ok(())
     }
 
-    ///spawns a new piece
-    fn next_piece(&mut self) -> DynResult<()> {
+    ///attempts to spawn next piece. returns true on success
+    fn next_piece(&mut self) -> bool {
         if !self.check_collision(&self.next_piece) {
             loop {
-                let attempt_piece = Piece::gen_random(self.spawn)?;
-                if attempt_piece.type_ != self.piece.type_ {
+                let attempt_piece = pieces::Piece::gen_random(self.spawn);
+                if attempt_piece.type_ != self.next_piece.type_ {
                     self.piece = mem::replace(&mut self.next_piece, attempt_piece);
                     break   
                 }
             }
             self.update_shadow();
-            Ok(())
-        }
-        else {dynerr!(TetrisError::SpawnError(self.spawn))}
+            true
+        } else {false}
     }
 
     ///takes a piece and checks its collision on the board
-    fn check_collision(&self, piece: &Piece) -> bool {
+    fn check_collision(&self, piece: &pieces::Piece) -> bool {
         for row in 0..piece.data.len() {
             for block in 0..piece.data[row].len() {
                 if let Some(_) = piece.data[row][block] {
@@ -629,7 +307,7 @@ impl Board {
             }
         }
 
-        let mut draw_piece = |piece: &Piece, location: (isize, isize), padding: usize| {
+        let mut draw_piece = |piece: &pieces::Piece, location: (isize, isize), padding: usize| {
             for row in 0..piece.data.len() {
                 for block in 0..piece.data[row].len() {
                     if let Some(sprite) = &piece.data[row][block] {
@@ -673,65 +351,7 @@ impl Board {
 
 
 
-///blocks have been replaced with Vec<bools>
-#[derive(Clone, Debug)]
-pub struct StrippedData {
-    pub data: Vec<bool>,
-    pub width: usize,
-    pub height: usize,
-}
-impl StrippedData {
-    fn strip(data: &BlockData) -> Self {
-        Self {
-            width: data[0].len(),
-            height: data.len(),
-            data: data.iter().flatten().map(|cell| cell.is_some()).collect()
-        }
-    }
-}
 
-#[derive(Clone)]
-pub struct StrippedPiece {
-    pub location: (isize, isize),
-    pub data: StrippedData,
-    pub can_hold: bool,
-}
-
-impl StrippedPiece {
-    fn get(piece: &Piece) -> Self {
-        Self {
-            location: piece.location,
-            data: StrippedData::strip(&piece.data),
-            can_hold: piece.can_hold,
-        }
-    }
-}
-
-
-///the data returned to AI from get_board()
-pub struct StrippedBoard {
-    pub piece: StrippedPiece,
-    pub next_piece: StrippedPiece,
-    pub held_piece: Option<StrippedPiece>,
-    pub data:   StrippedData,
-    pub score: usize,
-    pub level: usize,
-    pub gameover: bool,
-}
-
-impl StrippedBoard {
-    fn get(board: &Board) -> Self {
-        Self {
-            piece: StrippedPiece::get(&board.piece),
-            next_piece: StrippedPiece::get(&board.next_piece),
-            held_piece: if let Some(held) = &board.held_piece {Some(StrippedPiece::get(held))} else {None},
-            data: StrippedData::strip(&board.data),
-            score: board.score,
-            level: board.level,
-            gameover: board.gameover,
-        }
-    }
-}
 
 
 
@@ -756,7 +376,7 @@ pub mod tests {
         board.update()
     }
 
-    pub fn set_piece(board: &mut super::Board) -> DynResult<()> {
+    pub fn set_piece(board: &mut super::Board) {
         board.set_piece()
     }
 
@@ -768,11 +388,11 @@ pub mod tests {
         board.update_progress(cleared)
     }
 
-    pub fn next_piece(board: &mut super::Board) -> DynResult<()> {
+    pub fn next_piece(board: &mut super::Board) -> bool {
         board.next_piece()
     }
 
-    pub fn check_collision(board: &mut super::Board, piece: &super::Piece) -> bool {
+    pub fn check_collision(board: &mut super::Board, piece: &super::pieces::Piece) -> bool {
         board.check_collision(piece)
     }
 }

@@ -8,25 +8,15 @@ mod train;
 use dynerr::*;
 use engine;
 
-use std::env::args;
-use std::process::exit;
 ///the target fps
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
-pub fn run() {
+pub fn run(train: bool, dry: bool) {
 
-    if let Some(arg1) = args().nth(1) {
-        if arg1.to_lowercase() == "--train" {
-            if let Some(arg2) = args().nth(2) {
-                if arg2.to_lowercase() == "--dry" {
-                    check!(train::train(true));
-                }
-            } else {
-                check!(train::train(false));
-            }
-            exit(0);
-        }
+    if train {
+        check!(train::train(dry));
+        return
     }
 
     let parameters = ai::AiParameters {
