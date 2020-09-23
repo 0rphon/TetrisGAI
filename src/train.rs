@@ -30,13 +30,13 @@ use threadpool::ThreadPool;
 //100x200 8:38 var 38744
 
 ///times to run each AIs game
-const SIM_TIMES: usize      = 25;
+const SIM_TIMES: usize      = 1;   //25
 ///how many game sims can be running at once
-const POOL_SIZE: usize      = 10;
+const POOL_SIZE: usize      = 10;   //10
 ///generation size
-const BATCH_SIZE: usize     = 200;
+const BATCH_SIZE: usize     = 10;  //200
 ///how many generations to run
-const GENERATIONS: usize    = 200;
+const GENERATIONS: usize    = 5;  //200
 ///max level before timeout
 const MAX_LEVEL: usize      = 50;
 ///how often to update screen
@@ -73,11 +73,11 @@ impl DisplayThread {
                     .checked_sub(elapsed)
                     .unwrap_or(0);
                 println!(
-                    "{:02}h{:02}m{:02}s    |    {:>3}    |    {:5.02}g/s    |    ETA: {:02}h{:02}m{:02}s",
-                    elapsed/3600, (elapsed%3600)/60, elapsed%60,
+                    "{}    |    {:>3}    |    {:5.02}g/s    |    ETA: {}",
+                    format_time(elapsed, "hms"),
                     format!("{:02}%",percent),
                     {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}},
-                    eta/3600, (eta%3600)/60, eta%60
+                    format_time(eta, "hms")
                 );
                 last_progress = progress;
             }
@@ -131,6 +131,26 @@ impl fmt::Display for GameResult {
     }
 }
 
+fn format_time(seconds: u64, formatting: &str) -> String {
+    let mut disp = String::new();
+    for c in formatting.chars() {
+        disp.push_str(
+            &format!(
+                "{:02}{}",
+                match c {
+                    'd' => seconds/86400,
+                    'h' => (seconds%86400)/3600,
+                    'm' => (seconds%3600)/60,
+                    's' => seconds%60,
+                    i   => panic!("Cant format time value {}",i)
+                },
+                c
+            )
+        )
+    }
+    disp
+}
+
 
 ///does the actual training
 pub fn train(dry_run: bool) -> DynResult<()> {
@@ -175,9 +195,9 @@ pub fn train(dry_run: bool) -> DynResult<()> {
         let start = Instant::now();
         let mut results = check!(do_generation(generation));
         let elapsed = (Instant::now()-start).as_secs();
-        println!("GENERATION {} COMPLETED IN {:02}h{:02}m{:02}s       |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
+        println!("GENERATION {} COMPLETED IN {}       |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
             gen+1,
-            elapsed/3600, (elapsed%3600)/60, elapsed%60,
+            format_time(elapsed, "hms"),
             (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
             results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
             results[0].score-results[BATCH_SIZE-1].score
@@ -188,9 +208,9 @@ pub fn train(dry_run: bool) -> DynResult<()> {
                     .unwrap_or(0))
                     .checked_sub(total_elapsed)
                     .unwrap_or(0);
-        println!("ELAPSED: {:02}d{:02}h{:02}m{:02}s           |           TOTAL ETA: {:02}d{:02}h{:02}m{:02}s",
-            total_elapsed/86400, (total_elapsed%86400)/3600, (total_elapsed%3600)/60, total_elapsed%60,
-            eta/86400, (eta%86400)/3600, (eta%3600)/60, eta%60,
+        println!("ELAPSED: {}           |           TOTAL ETA: {}",
+            format_time(total_elapsed, "dhms"),
+            format_time(eta, "dhms"),
         );
         GameResult::print_header();
         for i in 0..3 {
@@ -200,8 +220,8 @@ pub fn train(dry_run: bool) -> DynResult<()> {
         println!("\n");
     }
     let total_elapsed = Instant::now()-total_start;
-    println!("{} generations completed in {:?}", GENERATIONS, total_elapsed);
-    println!("Average of 1 generation every {:?}", total_elapsed/GENERATIONS as u32);
+    println!("{} generations completed in {}", GENERATIONS, format_time(total_elapsed.as_secs(), "dhms"));
+    println!("Average of 1 generation every {}", format_time((total_elapsed/GENERATIONS as u32).as_secs(),"hms"));
 
     best_results.sort_by(|a, b| b.score.cmp(&a.score));
     println!("BEST RESULTS");
