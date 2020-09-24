@@ -30,13 +30,13 @@ use threadpool::ThreadPool;
 //100x200 8:38 var 38744
 
 ///times to run each AIs game
-const SIM_TIMES: usize      = 1;   //25
+const SIM_TIMES: usize      = 25;   //25
 ///how many game sims can be running at once
 const POOL_SIZE: usize      = 10;   //10
 ///generation size
-const BATCH_SIZE: usize     = 10;  //200
+const BATCH_SIZE: usize     = 200;  //200
 ///how many generations to run
-const GENERATIONS: usize    = 5;  //200
+const GENERATIONS: usize    = 1;    //200
 ///max level before timeout
 const MAX_LEVEL: usize      = 50;
 ///how often to update screen
@@ -213,7 +213,8 @@ pub fn train(dry_run: bool) -> DynResult<()> {
             format_time(eta, "dhms"),
         );
         GameResult::print_header();
-        for i in 0..3 {
+        let disp_num = {if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}};
+        for i in 0..disp_num {
             println!("  {:>2} |{}", i+1, results[i]);
             best_results.push(results.remove(i));
         }
@@ -226,7 +227,8 @@ pub fn train(dry_run: bool) -> DynResult<()> {
     best_results.sort_by(|a, b| b.score.cmp(&a.score));
     println!("BEST RESULTS");
     GameResult::print_header();
-    for i in 0..10 {
+    let disp_num = {if GENERATIONS >= 10 {10} else {GENERATIONS}};
+    for i in 0..disp_num {
         println!("  {:>2} |{}", i+1, best_results[i]);
     }
     Ok(())
@@ -339,6 +341,7 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 
 
 
+//10x10x100
 //before pooling it was at 8m30s
 //after its at 7m30s
 //benchmarks using my params 10x10x100
@@ -357,6 +360,9 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //removed shadow updates for down and drop                                                  00h02m54s    |    5.75g/s    |    307p/s    |    score variation: 133120
 //added sprite index                                                                        00h00m57s    |    17.54g/s    |    154p/s    |    score variation: 88490
 //got rid of unnecessary copies in movement and piece swapping                              00h00m24s    |    41.67g/s    |     43p/s    |    score variation: 81104
+//flattened board and pieces to 1d vec                                                      00h00m21s       |    47.62g/s    |    262    |    score variation: 350010
+//tried to trim a few more clones in ai                                                     00h00m22s       |    45.45g/s    |    298    |    score variation: 334920
+//CHANGING BENCHMARK TO 25X10X200                                                           00h01m50s       |    45.45g/s    |    307    |    score variation: 278325
 
 //850~ placed per game
 //5 moves~ per place + drop
@@ -368,7 +374,7 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //TO OPTIMIZE
 //convert everything to 1d vec (god help us)
 //benchmark AI functions
-
+//make lines cleared parameter like before instead of just score
 
 
 

@@ -32,16 +32,16 @@ pub fn run(train: bool, dry: bool) {
     let mut ai_radio = None;
 
     let mut screen = engine::drawing::Screen::new(
-        board.dimensions.0,
-        board.dimensions.1
+        board.screen_dim.0,
+        board.screen_dim.1
     );
     let mut fpslock = engine::game::FpsLock::create_lock(TARGET_FPS);
     let event_loop = engine::game::EventLoop::new();
     let mut input = engine::game::WinitInputHelper::new();
     let mut window = engine::game::Window::init(
         GAME_TITLE,
-        board.dimensions.0,
-        board.dimensions.1,
+        board.screen_dim.0,
+        board.screen_dim.1,
         &event_loop
     );
 

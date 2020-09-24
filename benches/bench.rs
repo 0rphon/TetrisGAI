@@ -32,10 +32,6 @@ criterion_group!(
     pieces::piece_get_left,
     pieces::piece_get_right,
     
-    strip::stripped_data_strip_board,
-    strip::stripped_data_strip_piece,
-    strip::stripped_piece_get,
-    strip::stripped_piece_get_next,
     strip::stripped_board_get,
 );
 criterion_main!(benches);
