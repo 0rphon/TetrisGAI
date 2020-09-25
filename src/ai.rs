@@ -1,4 +1,4 @@
-use crate::game;
+use crate::game::*;
 
 use dynerr::*;
 
@@ -52,7 +52,7 @@ pub enum Move {
 }
 
 ///current piece rotation relative to its start
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum Rotation {
     North,
     South,
@@ -60,25 +60,24 @@ enum Rotation {
     West,
 }
 
-#[derive(Debug)]
 struct MoveData {
     location: (isize, isize),
     is_held: bool,
     rotation: Rotation,
-    board: game::StrippedData,
+    board: Vec<bool>,
     value: f32,
     debug_scores: Vec<f32>,
 }
 
 impl MoveData {
 
-    fn generate_data(mut board: game::StrippedData, piece: game::StrippedPiece, is_held: bool, rotation: Rotation, parameters: &AiParameters) -> Self {
-        for (i, block) in piece.data.data.iter().enumerate() {
+    fn generate_data(mut board: Vec<bool>, piece: pieces::Piece, is_held: bool, rotation: Rotation, parameters: &AiParameters) -> Self {
+        for (i, block) in piece.data.iter().enumerate() {
             if *block {
-                let row = i/piece.data.width;
-                let column = i%piece.data.width;
-                let board_index = (((piece.location.1+row as isize)*board.width as isize) + (piece.location.0+column as isize)) as usize;           //USIZE WRAPPING
-                if let Some(cell) = board.data.get_mut(board_index) {*cell = true}
+                let row = i/piece.dim;
+                let column = i%piece.dim;
+                let board_index = (((piece.location.1+row as isize)*BOARD_WIDTH as isize) + (piece.location.0+column as isize)) as usize;           //USIZE WRAPPING
+                if let Some(cell) = board.get_mut(board_index) {*cell = true}
             }
         }
 
@@ -97,7 +96,6 @@ impl MoveData {
         move_data
     }
 
-    //need to have const floats as modifiers for importance
     /// calculates the move score. the higher the score the better
     /// also calcs the next board
     fn calc_board(&mut self, parameters: &AiParameters) {
@@ -112,7 +110,7 @@ impl MoveData {
         //average column height
         let avg_height       = (column_heights.iter().sum::<usize>() as f32/column_heights.len() as f32)*parameters.avg_height_importance;
         //tallest column - smallest column
-        let height_variation = ((column_heights.last().unwrap_or(&self.board.height)-column_heights.first().unwrap_or(&0)) as f32)*parameters.height_variation_importance;
+        let height_variation = ((column_heights.last().unwrap_or(&BOARD_HEIGHT)-column_heights.first().unwrap_or(&0)) as f32)*parameters.height_variation_importance;
         //how many gaps exist in columns
         let current_holes    = self.calc_holes()*parameters.current_holes_importance;
         //how many spots where empty spaces surrounded by filled spaces on either side exist (over the set max allowed pillar height)
@@ -125,17 +123,17 @@ impl MoveData {
     /// returns a list of all column heights.
     fn get_heights(&self) -> Vec<usize> {
         let mut heights = Vec::new();
-        for x in 0..self.board.width {
+        for x in 0..BOARD_WIDTH {
             let mut idx = x;
-            for y in 0..self.board.height {
-                if self.board.data[idx] {
-                    heights.push((self.board.height-y) as usize);
+            for y in 0..BOARD_HEIGHT {
+                if self.board[idx] {
+                    heights.push((BOARD_HEIGHT-y) as usize);
                     break
-                } else if y+1 == self.board.height {
+                } else if y+1 == BOARD_HEIGHT {
                     heights.push(0);
                     break
                 }
-                idx += self.board.width;
+                idx += BOARD_WIDTH;
             }
         }
         heights.sort();
@@ -145,14 +143,14 @@ impl MoveData {
     ///how many empty spaces have blocks over them
     fn calc_holes(&self) -> f32 {
         let mut holes = 0;
-        for x in 0..self.board.width {
+        for x in 0..BOARD_WIDTH {
             let mut idx = x;
             let mut under = false;
-            for _ in 0..self.board.height {
-                if self.board.data[idx] {under = true}
-                else if !self.board.data[idx]
+            for _ in 0..BOARD_HEIGHT {
+                if self.board[idx] {under = true}
+                else if !self.board[idx]
                 && under {holes+=1}
-                idx += self.board.width;
+                idx += BOARD_WIDTH;
             }
         }
         holes as f32
@@ -161,43 +159,39 @@ impl MoveData {
     ///each additional block for pillars over 2 blocks
     fn calc_pillars(&self, max_pillar_height: usize) -> f32 {
         let mut pillars = 0;
-        for x in 0..self.board.width {
+        for x in 0..BOARD_WIDTH {
             let mut idx = x;
             let mut pillar_height = 0;
-            for _ in 0..self.board.height {
-                if !self.board.data[idx]
-                && (*self.board.data
-                        .get((idx)
-                            .checked_sub(1)
-                            .unwrap_or(9999)
-                        )                                                                                               //BAD SOLUTION
-                        .unwrap_or(&true)
+            for _ in 0..BOARD_HEIGHT {
+                if !self.board[idx]
+                && (
+                    *self.board.get((idx).checked_sub(1).unwrap_or(9999)).unwrap_or(&true)                         //SLOPPY SOLUTION TO LEFT OF SCREEN INDEX
                     || x == 0                                                                                           //CHECK IF EDGE OF SCREEN
-                ) && (*self.board.data
-                        .get(idx)
-                        .unwrap_or(&true)
-                    || x == self.board.width-1                                                                          //CHECK IF EDGE OF SCREEN
+                ) && (
+                    *self.board.get(idx).unwrap_or(&true)
+                    || x == BOARD_WIDTH-1                                                                          //CHECK IF EDGE OF SCREEN
                 ) {
                     pillar_height+=1
                 }
-                idx += self.board.width;
+                idx += BOARD_WIDTH;
             }
             if pillar_height > max_pillar_height {pillars+=pillar_height-max_pillar_height}
         }
         pillars as f32
     }
 
-    //if need be, i could make this return the exact rows cleared so AI could go after higher rows?
+    //TODO if need be, i could make this return the exact rows cleared so AI could go after higher rows?
+    //TODO update its benchmark so it actually clears rows while benching
     ///clears rows, adds new empty rows, and returns points scored
     fn do_clear(&mut self) -> f32 {
         let mut cleared = Vec::new();
-        for y in 0..self.board.height {
-            let start_range = y*self.board.width;
-            let end_range = start_range+self.board.width;
-            if self.board.data[start_range..end_range].iter().all(|b| *b) {
-                self.board.data.drain(start_range..end_range);
-                self.board.data.splice(0..0, vec!(false;self.board.width));
-                cleared.push(self.board.height-y)
+        for y in 0..BOARD_HEIGHT {
+            let start_range = y*BOARD_WIDTH;
+            let end_range = start_range+BOARD_WIDTH;
+            if self.board[start_range..end_range].iter().all(|b| *b) {
+                self.board.drain(start_range..end_range);
+                self.board.splice(0..0, vec!(false;BOARD_WIDTH));
+                cleared.push(BOARD_HEIGHT-y)
             }
         }
         let modifier = match cleared.len() {
@@ -210,7 +204,7 @@ impl MoveData {
         cleared.iter().map(|y|modifier*(y+1)).sum::<usize>() as f32
     }
 
-    fn gen_input(&self, board: &game::StrippedBoard) -> Vec<Move>{
+    fn gen_input(&self, board: &StrippedBoard) -> Vec<Move>{
         let mut moves = Vec::new();
         let piece = {
             if self.is_held {
@@ -220,12 +214,28 @@ impl MoveData {
                 } else {&board.next_piece}
             } else {&board.piece}
         };
+        let roto_times = {
+            match self.rotation {
+                Rotation::North => 0,
+                Rotation::West  => 1,
+                Rotation::South => 2,
+                Rotation::East  => 3,
+            }
+        };
+        for _ in 0..roto_times {moves.push(Move::Rotate)}
+        let distance = self.location.0 - piece.location.0;
+        if distance > 0 {
+            for _ in 0..distance {moves.push(Move::Right)}
+        } else if distance < 0 {
+            for _ in distance..0 {moves.push(Move::Left)}
+        }
+        moves.push(Move::Drop);
         ////LOGGING##################################################################################################
         //log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.value), "ai.log");   //#
         //let mut scores = String::new();                                                                         //#
         //for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
         //log!(scores, "ai.log");                                                                                 //#
-        //for row in self.board.data.chunks(self.board.width) {                                                   //#
+        //for row in self.board.data.chunks(BOARD_WIDTH) {                                                   //#
         //    let mut r = String::new();                                                                          //#
         //    for column in row {                                                                                 //#
         //        if *column {                                                                                    //#
@@ -247,22 +257,6 @@ impl MoveData {
         //    log!(r, "ai.log");                                                                      //#
         //}                                                                                           //#
         ////#############################################################################################
-        let roto_times = {
-            match self.rotation {
-                Rotation::North => 0,
-                Rotation::West  => 1,
-                Rotation::South => 2,
-                Rotation::East  => 3,
-            }
-        };
-        for _ in 0..roto_times {moves.push(Move::Rotate)}
-        let distance = self.location.0 - piece.location.0;
-        if distance > 0 {
-            for _ in 0..distance {moves.push(Move::Right)}
-        } else if distance < 0 {
-            for _ in distance..0 {moves.push(Move::Left)}
-        }
-        moves.push(Move::Drop);
         ////LOGGING##########################################################
         //log!(format!("Moves {:?}\n", moves), "ai.log");                 //#
         ////#################################################################
@@ -270,28 +264,29 @@ impl MoveData {
     }
 }
 
+//TODO THIS IS FUCKING BACKWARDS TO HOW THE GAME DOES ROTATION HOLY SHIT WHAT
 ///rotates piece data
-fn rotate_piece(piece: &mut game::StrippedData) {
+fn rotate_piece(piece: &mut pieces::Piece) {
     let original = piece.data.clone();
     for i in 0..piece.data.len() {
-        let column = i%piece.width;
-        let row = i/piece.width;
-        piece.data[(row*piece.width)+column] = original[(column*piece.width)+piece.width-row-1];
+        let column = i%piece.dim;
+        let row = i/piece.dim;
+        piece.data[(row*piece.dim)+column] = original[(column*piece.dim)+piece.dim-row-1];
     }
 }
 
 ///checks piece for collision on board
-fn check_collision(board: &game::StrippedData, piece: &game::StrippedPiece) -> bool {
-    for i in 0..piece.data.data.len() {
-        if piece.data.data[i] {
-            let row = i/piece.data.width;
-            let column = i%piece.data.width;
+fn check_collision(board: &Vec<bool>, piece: &pieces::Piece) -> bool {
+    for i in 0..piece.data.len() {
+        if piece.data[i] {
+            let row = i/piece.dim;
+            let column = i%piece.dim;
             if (piece.location.0+column as isize) < 0
-            || (piece.location.0+column as isize) > board.width as isize-1
+            || (piece.location.0+column as isize) > BOARD_WIDTH as isize-1
             || (piece.location.1+row as isize) < 0
-            || (piece.location.1+row as isize) > board.height as isize-1
+            || (piece.location.1+row as isize) > BOARD_HEIGHT as isize-1
                 {return true}
-            if let Some(cell) = board.data.get((((piece.location.1+row as isize)*board.width as isize)+(piece.location.0+column as isize)) as usize) {                      //RELIES ON USIZE WRAPPING
+            if let Some(cell) = board.get((((piece.location.1+row as isize)*BOARD_WIDTH as isize)+(piece.location.0+column as isize)) as usize) {                      //RELIES ON USIZE WRAPPING
                 if *cell {return true}
             } else {return true}
         }
@@ -300,43 +295,43 @@ fn check_collision(board: &game::StrippedData, piece: &game::StrippedPiece) -> b
 }
 
 ///get all possible moves for a piece
-fn get_moves_for_piece(board: &game::StrippedData, mut piece: game::StrippedPiece, is_held: bool, parameters: &AiParameters) -> Vec<MoveData> {
+fn get_moves_for_piece(board: &StrippedBoard, mut piece: pieces::Piece, is_held: bool, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves =  Vec::new();
     let original_location = piece.location;
     for rotation in [Rotation::North, Rotation::East, Rotation::South, Rotation::West].iter() {
         //move to left edge
-        while !check_collision(board, &piece) {
+        while !check_collision(&board.data, &piece) {
             piece.location.0-=1;
         }
         piece.location.0+=1;
         //while piece in valid location
-        while !check_collision(board, &piece) {
+        while !check_collision(&board.data, &piece) {
             //drop
-            while !check_collision(board, &piece) {
+            while !check_collision(&board.data, &piece) {
                 piece.location.1+=1;
             }
             piece.location.1-=1;
             //add move
-            possible_moves.push(MoveData::generate_data(board.clone(), piece.clone(), is_held, rotation.clone(), parameters));
+            possible_moves.push(MoveData::generate_data(board.data.clone(), piece.clone(), is_held, *rotation, parameters));
             //reset piece and move over one
             piece.location.1 = original_location.1;
             piece.location.0 += 1;
         }
         piece.location = original_location;
-        rotate_piece(&mut piece.data);
+        rotate_piece(&mut piece);
     }
     possible_moves
 }
 
 ///get all possible moves for current board
-fn get_possible_moves(board: &game::StrippedBoard, parameters: &AiParameters) -> Vec<MoveData> {
+fn get_possible_moves(board: &StrippedBoard, parameters: &AiParameters) -> Vec<MoveData> {
     let mut possible_moves = Vec::new();
-    possible_moves.extend(get_moves_for_piece(&board.data, board.piece.clone(), false, parameters));
+    possible_moves.extend(get_moves_for_piece(&board, board.piece.clone(), false, parameters));
     if board.piece.can_hold {
         if let Some(held) = &board.held_piece {
-            possible_moves.extend(get_moves_for_piece(&board.data, held.clone(), true, parameters));
+            possible_moves.extend(get_moves_for_piece(&board, held.clone(), true, parameters));
         } else {
-            possible_moves.extend(get_moves_for_piece(&board.data, board.next_piece.clone(), true, parameters));
+            possible_moves.extend(get_moves_for_piece(&board, board.next_piece.clone(), true, parameters));
         }
     }
     possible_moves
@@ -344,12 +339,12 @@ fn get_possible_moves(board: &game::StrippedBoard, parameters: &AiParameters) ->
 
 
 ///takes board. gets all possible moves. finds best move. generates input
-fn get_input_move(board: game::StrippedBoard, parameters: &AiParameters) -> (Vec<Move>, Option<Vec<bool>>) {
+fn get_input_move(board: StrippedBoard, parameters: &AiParameters) -> (Vec<Move>, Option<Vec<bool>>) {
     let mut possible_moves = get_possible_moves(&board, parameters);
     if !possible_moves.is_empty() {
         possible_moves.sort_by(|a,b| b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal));     //IF NAN DEFAULTS TO EQUAL
         let chosen_move = possible_moves.remove(0);
-        (chosen_move.gen_input(&board), Some(chosen_move.board.data))
+        (chosen_move.gen_input(&board), Some(chosen_move.board))
     } else {(vec!(Move::Restart), None)}
 }
 
@@ -359,41 +354,28 @@ fn get_input_move(board: game::StrippedBoard, parameters: &AiParameters) -> (Vec
 
 
 ///generates a log message of board mismatch
-fn log_board(last: &Vec<bool>, predicted: &Vec<bool>, board: &game::StrippedData) {
-    let mut message = String::from("Board mismatch!\nLast:\n");
-    for row in last.chunks(board.width) {
-        for column in row {
-            if *column {
-                message.push_str("[X]")
-            } else {message.push_str("[ ]")}
+fn log_board(last: &Vec<bool>, predicted: &Vec<bool>, board: &Vec<bool>) {
+    let mut message = String::from("Board mismatch!\n");
+    let mut disp_board = |header: &str, board: &Vec<bool>| {
+        message.push_str(header);
+        message.push_str(":\n");
+        for row in board.chunks(BOARD_WIDTH) {
+            for column in row {
+                if *column {
+                    message.push_str("[X]")
+                } else {message.push_str("[ ]")}
+            }
+            message.push('\n');
         }
-        message.push('\n');
-    }
-
-    message.push_str("Expected:\n");
-    for row in predicted.chunks(board.width) {
-        for column in row {
-            if *column {
-                message.push_str("[X]")
-            } else {message.push_str("[ ]")}
-        }
-        message.push('\n');
-    }
-    message.push_str("Actual:\n");
-    for row in board.data.chunks(board.width) {
-        for column in row {
-            if *column {
-                message.push_str("[X]")
-            } else {message.push_str("[ ]")}
-        }
-        message.push('\n');
-    }
-    message.push('\n');
+    };
+    disp_board("Last", last);
+    disp_board("Expected", predicted);
+    disp_board("Actual", board);
     log!(message, "ai.log");
 }
 
 pub struct Packet {
-    board: Option<game::StrippedBoard>,
+    board: Option<StrippedBoard>,
     exit: bool,
 }
 
@@ -412,7 +394,7 @@ impl MainRadio {
     }
 
     ///sends the board to ai
-    pub fn send_board(&self, board: game::StrippedBoard) -> DynResult<()> {
+    pub fn send_board(&self, board: StrippedBoard) -> DynResult<()> {
         self.send(Packet{board: Some(board), exit: false})
     }
 
@@ -461,15 +443,15 @@ fn ai_loop(radio: AiRadio, parameters: AiParameters, log_flag: bool) {
     let mut predicted_board: Option<Vec<bool>> = None;
     for packet in &radio.rx {
         if let Some(new_board) = packet.board {
-            if new_board.data.data != last_board {
+            if new_board.data != last_board {
                 if log_flag {
                     if let Some(predicted) = &predicted_board {
-                        if *predicted != new_board.data.data {
+                        if *predicted != new_board.data {
                             log_board(&last_board, predicted, &new_board.data);
                         }
                     }
                 }
-                last_board = new_board.data.data.clone();
+                last_board = new_board.data.clone();
                 if !new_board.gameover {
                     let result = get_input_move(new_board, &parameters);
                     check!(radio.set_input(result.0));

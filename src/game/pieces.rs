@@ -20,66 +20,66 @@ const SHADOW_BORDER_COLOR:  [u8;4]          = [0xDC, 0xDC, 0xDC, 0xFF];
 
 
 const I_COLOR: [u8;4] = [0x00, 0xFF, 0xFF, 0xFF];
-const I_DATA: [[bool;4];4] = [
-    [false, false, false, false],
-    [true , true , true , true ],
-    [false, false, false, false],
-    [false, false, false, false],
+const I_DIM: usize = 4;
+const I_DATA: [bool;I_DIM*I_DIM] = [
+    false, false, false, false,
+    true , true , true , true ,
+    false, false, false, false,
+    false, false, false, false,
 ];
 const O_COLOR: [u8;4] = [0xFF, 0xFF, 0x00, 0xFF];
-const O_DATA: [[bool;2];2] = [
-    [true , true],
-    [true , true],
+const O_DIM: usize = 2;
+const O_DATA: [bool;O_DIM*O_DIM] = [
+    true , true,
+    true , true,
 ];
 const T_COLOR: [u8;4] = [0x80, 0x00, 0x80, 0xFF];
-const T_DATA: [[bool;3];3] = [
-    [false, true , false],
-    [true , true , true ],
-    [false, false, false],
+const T_DIM: usize = 3;
+const T_DATA: [bool; T_DIM*T_DIM] = [
+    false, true , false,
+    true , true , true ,
+    false, false, false,
 ];
 const S_COLOR: [u8;4] = [0x00, 0x80, 0x00, 0xFF];
-const S_DATA: [[bool;3];3] = [
-    [false, true , true ],
-    [true , true , false],
-    [false, false, false],
+const S_DIM: usize = 3;
+const S_DATA: [bool;S_DIM*S_DIM] = [
+    false, true , true ,
+    true , true , false,
+    false, false, false,
 ];
 const Z_COLOR: [u8;4] = [0xFF, 0x00, 0x00, 0xFF];
-const Z_DATA: [[bool;3];3] = [
-    [true , true , false],
-    [false, true , true ],
-    [false, false, false],
+const Z_DIM: usize = 3;
+const Z_DATA: [bool;Z_DIM*Z_DIM] = [
+    true , true , false,
+    false, true , true ,
+    false, false, false,
 ];
 const J_COLOR: [u8;4] = [0x00, 0x00, 0xFF, 0xFF];
-const J_DATA: [[bool;3];3] = [
-    [true , false, false],
-    [true , true , true ],
-    [false, false, false],
+const J_DIM: usize = 3;
+const J_DATA: [bool;J_DIM*J_DIM] = [
+    true , false, false,
+    true , true , true ,
+    false, false, false,
 ];
 const L_COLOR: [u8;4] = [0xFF, 0xA5, 0x00, 0xFF];
-const L_DATA: [[bool;3];3] = [
-    [false, false, true ],
-    [true , true , true ],
-    [false, false, false],
+const L_DIM: usize = 3;
+const L_DATA: [bool;L_DIM*L_DIM] = [
+    false, false, true ,
+    true , true , true ,
+    false, false, false,
 ];
 
-///converts [&[T; Size]; Size] to Vec<Vec<T>>
-macro_rules! fit {
-    ($x:expr) => {
-        $x.iter().map(|y| y.to_vec()).collect::<Vec<_>>()
-    };
-}
-
-///blocks in piece
-pub type GridData = Vec<Vec<bool>>;
-///list of piece info
-pub type PieceIndex = HashMap<PieceType, (Sprite, Vec<Vec<bool>>)>;
+//TODO why isnt this a struct???
+///list of piece info (Sprite, data, piece dimensions)
+pub type PieceIndex = HashMap<PieceType, (Sprite, Vec<bool>, usize)>;
 ///piece types
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum PieceType {I, O, T, S, Z, J, L, Shadow}
 
 impl PieceType {
-
+    
     //only run during board creating so i didnt bother benchmarking
+    //TODO instead of iterating through entire 2d vec, convert top and bottom rows, then convert left and right portions of rows. maybe even do in 1D via chunking? pound out the first and last rows as one slice then the middle rows do chunking over its slice
     ///generates a colored block with a border
     fn gen_block(color: [u8;4], border: [u8;4]) -> Sprite {
         let mut block = vec!(vec!(color; BLOCK_SIZE); BLOCK_SIZE);
@@ -95,23 +95,23 @@ impl PieceType {
         }
         Sprite::add(BLOCK_SIZE, BLOCK_SIZE, block)
     }
-
+    
     
     //only run during board creating so i didnt bother benchmarking
     ///generates a pieces associated info
-    fn gen_piece_entry(&self) -> (Sprite, Vec<Vec<bool>>) {
+    fn gen_piece_entry(&self) -> (Sprite, Vec<bool>, usize) {
         match *self {
-            Self::I => (Self::gen_block(I_COLOR, BORDER_COLOR), fit!(I_DATA)),
-            Self::J => (Self::gen_block(J_COLOR, BORDER_COLOR), fit!(J_DATA)),
-            Self::L => (Self::gen_block(L_COLOR, BORDER_COLOR), fit!(L_DATA)),
-            Self::O => (Self::gen_block(O_COLOR, BORDER_COLOR), fit!(O_DATA)),
-            Self::T => (Self::gen_block(T_COLOR, BORDER_COLOR), fit!(T_DATA)),
-            Self::S => (Self::gen_block(S_COLOR, BORDER_COLOR), fit!(S_DATA)),
-            Self::Z => (Self::gen_block(Z_COLOR, BORDER_COLOR), fit!(Z_DATA)),
-            Self::Shadow => (Self::gen_block(SHADOW_COLOR, SHADOW_BORDER_COLOR), Vec::new()),
+            Self::I      => (Self::gen_block(I_COLOR, BORDER_COLOR), I_DATA.to_vec(), I_DIM),
+            Self::J      => (Self::gen_block(J_COLOR, BORDER_COLOR), J_DATA.to_vec(), J_DIM),
+            Self::L      => (Self::gen_block(L_COLOR, BORDER_COLOR), L_DATA.to_vec(), L_DIM),
+            Self::O      => (Self::gen_block(O_COLOR, BORDER_COLOR), O_DATA.to_vec(), O_DIM),
+            Self::T      => (Self::gen_block(T_COLOR, BORDER_COLOR), T_DATA.to_vec(), T_DIM),
+            Self::S      => (Self::gen_block(S_COLOR, BORDER_COLOR), S_DATA.to_vec(), S_DIM),
+            Self::Z      => (Self::gen_block(Z_COLOR, BORDER_COLOR), Z_DATA.to_vec(), Z_DIM),
+            Self::Shadow => (Self::gen_block(SHADOW_COLOR, SHADOW_BORDER_COLOR), Vec::new(), 0),
         }
     }
-
+    
     //not benched
     ///gets a random piece type
     pub fn pick_random() -> Self {
@@ -138,39 +138,37 @@ impl PieceType {
 }
 
 
+///blocks in piece
 ///the piece object
 #[derive(Clone)]
 pub struct Piece {                                    //ONLY PUBLIC BECAUSE BENCHMARKING REQUIRED IT TO BE
     pub type_: PieceType,
     pub location: (isize, isize),
-    pub data: GridData,
+    pub data: Vec<bool>,
+    pub dim: usize,
     pub can_hold: bool,
 }
 impl Piece {
 
     ///generates the given piece type at the given location
     pub fn gen_piece(type_: PieceType, location: (isize, isize), index: &PieceIndex) -> Self {
+        let reference = index.get(&type_).unwrap();
         Self {
             type_,
             location,
-            data: index.get(&type_).unwrap().1.clone(),
+            data: reference.1.clone(),
+            dim: reference.2,
             can_hold: true,
         }
     }
 
     ///gets a rotated version of the piece
     pub fn get_rotated(&self) -> Piece {
-        let height = self.data.len();
-        let width = self.data[0].len();                                         //UNCHECKED INDEX
         let mut r = self.clone();
-        for row in 0..height {
-            for block in 0..width {
-                if self.data[row][block] {
-                    r.data[block][width-row-1] = true;
-                } else {
-                    r.data[block][width-row-1] = false;
-                }
-            }
+        for (i, block) in self.data.iter().enumerate() {
+            let row = i/self.dim;
+            let col = i%self.dim;
+            r.data[(col*self.dim)+self.dim-row-1] = *block;
         }
         r
     }

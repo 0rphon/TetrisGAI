@@ -10,21 +10,26 @@ use engine::drawing;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::mem;
+use std::convert::TryInto;
+
+use image;
 
 ///width of board in blocks
-const BOARD_WIDTH:          usize           = 10;
+pub const BOARD_WIDTH: usize                = 10;
 ///height of board in blocks
-const BOARD_HEIGHT:         usize           = 20;
+pub const BOARD_HEIGHT: usize               = 20;
 ///the left and right padding of board in blocks
-const BOARD_PAD:            usize           = 5;
+const BOARD_PAD: usize                      = 5;
 ///the screen sprite
-const BOARD_SPRITE:         &str            = "board.png";
+const BOARD_SPRITE: &[u8; 7408]             = include_bytes!("sprites/board.png");
+const SPRITE_WIDTH: usize                   = 640;
+const SPRITE_HEIGHT: usize                  = 640;
 ///the location of the next piece in blocks
-const NEXT_PIECE_LOCATION:  (isize, isize)  = (16,1);
+const NEXT_PIECE_LOCATION: (isize, isize)   = (16,1);
 ///the location of the held piece in blocks
-const HELD_PIECE_LOCATION:  (isize, isize)  = (0, 1);
+const HELD_PIECE_LOCATION: (isize, isize)   = (0, 1);
 ///the color of gameover text
-const GAME_OVER_COLOR:      [u8;4]          = [0xFF;4];
+const GAME_OVER_COLOR: [u8;4]               = [0xFF;4];
 
 
 ///possible piece movements
@@ -34,7 +39,7 @@ pub enum Move {
     Left,
     Right,
 }
-pub type BoardData = Vec<Vec<Option<pieces::PieceType>>>;
+pub type BoardData = Vec<Option<pieces::PieceType>>;
 ///the board object                                         SHOULD SPLIT UP INTO SEPARATE STRUCTS THAT THE BOARD CAN INTERACT WITH. LIKE "BoardPieces" AND "BoardState"
 #[derive(Clone)]
 pub struct Board {
@@ -46,7 +51,7 @@ pub struct Board {
     data:   BoardData,
     piece_index: pieces::PieceIndex,
     backdrop: Sprite,
-    pub dimensions: (usize, usize),
+    pub screen_dim: (usize, usize),
     padding: usize,
     pub score: usize,
     highscore: usize,
@@ -61,17 +66,30 @@ impl Board {
     pub fn new_board() -> DynResult<Self> {
         let spawn = (BOARD_WIDTH as isize/2-2, 0);
         let piece_index = pieces::PieceType::gen_piece_index();
+        let piece = pieces::Piece::gen_piece(pieces::PieceType::pick_random(), spawn, &piece_index);
+        let next_piece = {loop {
+            match pieces::PieceType::pick_random() {
+                t if t == piece.type_ => continue,
+                t => break t,
+            }
+        }};
+        let backdrop = image::load_from_memory(BOARD_SPRITE)?.to_rgba()
+            .chunks_exact(SPRITE_WIDTH*4).map(|r|
+                r.chunks_exact(4).map(|p|
+                    p.try_into().unwrap()
+                ).collect::<Vec<[u8;4]>>()
+            ).collect::<Vec<Vec<[u8;4]>>>();
         let mut board = Self {
-            piece: pieces::Piece::gen_piece(pieces::PieceType::pick_random(), spawn, &piece_index),
+            piece,
             shadow: spawn,
-            next_piece: pieces::PieceType::pick_random(),
+            next_piece,
             held_piece: None,
             spawn,
             piece_index,
-            backdrop: Sprite::load(BOARD_SPRITE)?,
-            dimensions: (0,0),
+            backdrop: Sprite::add(SPRITE_WIDTH, SPRITE_HEIGHT, backdrop),
+            screen_dim: (0,0),
             padding: BOARD_PAD*pieces::BLOCK_SIZE,
-            data: vec!(vec!(None; BOARD_WIDTH); BOARD_HEIGHT),
+            data: vec!(None; BOARD_WIDTH*BOARD_HEIGHT),
             score: 0,
             highscore: Self::get_highscore()?,
             cleared: 0,
@@ -79,7 +97,7 @@ impl Board {
             level: 0,
             gameover: false,
         };
-        board.dimensions = (board.backdrop.width, board.backdrop.height);
+        board.screen_dim = (board.backdrop.width, board.backdrop.height);
         board.update_shadow();
         Ok(board)
     }
@@ -109,7 +127,10 @@ impl Board {
                 else {
                     unsafe {
                         #[allow(invalid_value)]
-                        let piece = mem::replace(&mut self.piece,  mem::MaybeUninit::<pieces::Piece>::zeroed().assume_init());  //UNSAFE CODE BUT DONT WORRY ITS SAFE
+                        let piece = mem::replace(                                           //UNSAFE CODE BUT DONT WORRY ITS SAFE
+                            &mut self.piece,
+                            mem::MaybeUninit::<pieces::Piece>::zeroed().assume_init()
+                        );
                         self.held_piece = Some(piece);
                         if !self.next_piece() {
                             self.piece = self.held_piece.take().unwrap();
@@ -209,7 +230,7 @@ impl Board {
             self.set_piece();
             let cleared = self.update_rows();
             self.update_progress(cleared)?;
-            if self.data[0].iter().any(|b| b.is_some())
+            if self.data[0..BOARD_WIDTH].iter().any(|b| b.is_some())
             || !self.next_piece() {
                 self.gameover = true;
             }
@@ -219,14 +240,15 @@ impl Board {
 
     ///consumes current piece and attempts to set piece
     fn set_piece(&mut self) {
-        for row in 0..self.piece.data.len() {
-            for block in 0..self.piece.data[row].len() {
-                if self.piece.data[row][block] {
-                    if let Some(y) = self.data.get_mut((self.piece.location.1+row as isize) as usize) {                //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                        if let Some(x) = y.get_mut((self.piece.location.0+block as isize) as usize) {                  //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                            *x = Some(self.piece.type_);
-                        }
-                    }
+        for (i, block) in self.piece.data.iter().enumerate() {
+            if *block {
+                let row = i/self.piece.dim;
+                let col = i%self.piece.dim;
+                let board_index =
+                    (((self.piece.location.1+row as isize)*BOARD_WIDTH as isize)
+                    + (self.piece.location.0+col as isize)) as usize;                         //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
+                if let Some(board_block) = self.data.get_mut(board_index) {
+                    *board_block = Some(self.piece.type_);
                 }
             }
         }
@@ -235,12 +257,13 @@ impl Board {
     ///checks for filled rows and removes them
     fn update_rows(&mut self) -> Vec<usize> {
         let mut cleared = Vec::new();
-        for row in 0..self.data.len() {
-            //if row doesnt have any empty blocks then remove
-            if self.data[row].iter().all(|b| b.is_some()) {
-                self.data.remove(row);
-                self.data.insert(0, vec!(None;self.data[0].len()));
-                cleared.push(row);
+        for row in 0..BOARD_HEIGHT {
+            let start_range = row*BOARD_WIDTH;
+            let end_range = start_range+BOARD_WIDTH;
+            if self.data[start_range..end_range].iter().all(|b| b.is_some()) {
+                self.data.drain(start_range..end_range);
+                self.data.splice(0..0, vec!(None;BOARD_WIDTH));
+                cleared.push(BOARD_HEIGHT-row);
             }
         }
         cleared
@@ -269,6 +292,7 @@ impl Board {
         Ok(())
     }
 
+    //TODO compare this to the technique used in constructor method
     ///attempts to spawn next piece. returns true on success
     fn next_piece(&mut self) -> bool {
         let next_piece = pieces::Piece::gen_piece(self.next_piece, self.spawn, &self.piece_index);
@@ -288,14 +312,22 @@ impl Board {
 
     ///takes a piece and checks its collision on the board
     fn check_collision(&self, piece: &pieces::Piece, location: (isize, isize)) -> bool {
-        for row in 0..piece.data.len() {
-            for block in 0..piece.data[row].len() {
-                if piece.data[row][block] {
-                    if let Some(y) = self.data.get((location.1+row as isize) as usize) {          //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                        if let Some(x) = y.get((location.0+block as isize) as usize) {            //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
-                            if x.is_some() {return true}
-                        } else {return true}
-                    } else {return true}
+        for (i, block) in piece.data.iter().enumerate() {
+            if *block {
+                let row = i/piece.dim;
+                let col = i%piece.dim;
+                if (location.0+col as isize) < 0
+                || (location.0+col as isize) > BOARD_WIDTH as isize-1
+                || (location.1+row as isize) < 0
+                || (location.1+row as isize) > BOARD_HEIGHT as isize-1
+                    {return true}
+                let board_index =
+                    (((location.1+row as isize)*BOARD_WIDTH as isize)
+                    + (location.0+col as isize)) as usize;                          //IF ITS NEG IT'LL WRAP AND STILL BE INVALID
+                match self.data.get(board_index) {
+                    Some(Some(_)) => {return true},
+                    Some(_) => continue,
+                    None => {return true}
                 }
             }
         }
@@ -313,65 +345,66 @@ impl Board {
         screen.wipe();
         screen.draw_sprite(&self.backdrop, (0,0));
         //draw set blocks
-        for row in 0..self.data.len() {
-            for block in 0..self.data[row].len() {
-                if let Some(type_) = &self.data[row][block] {
-                    let sprite = &self.piece_index.get(&type_).unwrap().0;
-                    screen.draw_sprite(sprite, (((block*sprite.width)+self.padding) as isize, (row*sprite.height) as isize))
-                }
+        for (i, block) in self.data.iter().enumerate() {
+            if let Some(type_) = block {
+                let row = i/BOARD_WIDTH;
+                let col = i%BOARD_WIDTH;
+                let sprite = &self.piece_index.get(&type_).unwrap().0;
+                screen.draw_sprite(sprite, (((col*sprite.width)+self.padding) as isize, (row*sprite.height) as isize))
             }
         }
 
-        for row in 0..self.piece.data.len() {
-            for block in 0..self.piece.data[row].len() {
-                if self.piece.data[row][block] {
-                    let sprite = &self.piece_index.get(&pieces::PieceType::Shadow).unwrap().0;
-                    screen.draw_sprite(
-                        sprite,
-                        (
-                            self.shadow.0*sprite.width as isize + ((block*sprite.width)+self.padding) as isize,
-                            self.shadow.1*sprite.height as isize + (row*sprite.height) as isize
-                        )
+        for (i, block) in self.piece.data.iter().enumerate() {
+            if *block {
+                let sprite = &self.piece_index.get(&pieces::PieceType::Shadow).unwrap().0;
+                let row = i/self.piece.dim;
+                let col = i%self.piece.dim;
+                screen.draw_sprite(
+                    sprite,
+                    (
+                        self.shadow.0*sprite.width as isize + ((col*sprite.width)+self.padding) as isize,
+                        self.shadow.1*sprite.height as isize + (row*sprite.height) as isize
                     )
-                }
+                )
             }
         }
 
         let next_piece = self.piece_index.get(&self.next_piece).unwrap();
-        for row in 0..next_piece.1.len() {
-            for block in 0..next_piece.1[row].len() {
-                if next_piece.1[row][block] {
+        for (i, block) in next_piece.1.iter().enumerate() {
+            if *block {
+                let row = i/next_piece.2;
+                let col = i%next_piece.2;
+                screen.draw_sprite(
+                    &next_piece.0,
+                    (
+                        NEXT_PIECE_LOCATION.0*next_piece.0.width as isize + (col*next_piece.0.width) as isize,
+                        NEXT_PIECE_LOCATION.1*next_piece.0.height as isize + (row*next_piece.0.height) as isize
+                    )
+                )
+            }
+        }
+
+        let mut draw_piece = |piece: &pieces::Piece, location: (isize, isize), padding: usize, sprite: &Sprite| {
+            for (i, block) in piece.data.iter().enumerate() {
+                if *block {
+                    let row = i/piece.dim;
+                    let col = i%piece.dim;
                     screen.draw_sprite(
-                        &next_piece.0,
+                        sprite,
                         (
-                            NEXT_PIECE_LOCATION.0*next_piece.0.width as isize + (block*next_piece.0.width) as isize,
-                            NEXT_PIECE_LOCATION.1*next_piece.0.height as isize + (row*next_piece.0.height) as isize
+                            location.0*sprite.width as isize + ((col*sprite.width)+padding) as isize,
+                            location.1*sprite.height as isize + (row*sprite.height) as isize
                         )
                     )
                 }
             }
-        }
-
-        let mut draw_piece = |piece: &pieces::Piece, location: (isize, isize), padding: usize| {
-            for row in 0..piece.data.len() {
-                for block in 0..piece.data[row].len() {
-                    if piece.data[row][block] {
-                        let sprite = &self.piece_index.get(&piece.type_).unwrap().0;
-                        screen.draw_sprite(
-                            sprite,
-                            (
-                                location.0*sprite.width as isize + ((block*sprite.width)+padding) as isize,
-                                location.1*sprite.height as isize + (row*sprite.height) as isize
-                            )
-                        )
-                    }
-                }
-            }
         };
-        draw_piece(&self.piece, self.piece.location, self.padding);
         if let Some(held) = &self.held_piece {
-            draw_piece(held, HELD_PIECE_LOCATION, 0);
+            let sprite = &self.piece_index.get(&held.type_).unwrap().0;
+            draw_piece(held, HELD_PIECE_LOCATION, 0, &sprite);
         }
+        let sprite = &self.piece_index.get(&self.piece.type_).unwrap().0;
+        draw_piece(&self.piece, self.piece.location, self.padding, &sprite);
 
         screen.draw_text((9,191), &format!("{}",self.highscore), 32.0, &[255;4], drawing::DEBUG_FONT);
         screen.draw_text((9,254), &format!("{}",self.score), 32.0, &[255;4], drawing::DEBUG_FONT);
@@ -448,3 +481,40 @@ pub mod tests {
         board.data.clone()
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+// helper functions for flattening
+//
+// CALC X,Y
+// let row = i/piece.data.width;
+// let col = i%piece.data.width;
+
+// CALC PIECE LOCATION ON SCREEN
+// let board_index = (((piece.location.1+row as isize)*board.width as isize) + (piece.location.0+column as isize)) as usize;
+
+// ITER COLUMNS INSTEAD OF ROWS
+// for x in 0..self.board.width {
+//     let mut idx = x;
+//     for y in 0..self.board.height {
+//         idx += self.board.width;
+//     }
+// }
+
+
+// check entire row
+// let mut cleared = Vec::new();
+// for y in 0..self.board.height {
+//     let start_range = y*self.board.width;
+//     let end_range = start_range+self.board.width;
+//     if self.board.data[start_range..end_range].iter().all(|b| *b) {
