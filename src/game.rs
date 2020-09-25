@@ -10,21 +10,26 @@ use engine::drawing;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::mem;
+use std::convert::TryInto;
+
+use image;
 
 ///width of board in blocks
-pub const BOARD_WIDTH:          usize       = 10;
+pub const BOARD_WIDTH: usize                = 10;
 ///height of board in blocks
-pub const BOARD_HEIGHT:         usize       = 20;
+pub const BOARD_HEIGHT: usize               = 20;
 ///the left and right padding of board in blocks
-const BOARD_PAD:            usize           = 5;
+const BOARD_PAD: usize                      = 5;
 ///the screen sprite
-const BOARD_SPRITE:         &str            = "board.png";
+const BOARD_SPRITE: &[u8; 7408]             = include_bytes!("sprites/board.png");
+const SPRITE_WIDTH: usize                   = 640;
+const SPRITE_HEIGHT: usize                  = 640;
 ///the location of the next piece in blocks
-const NEXT_PIECE_LOCATION:  (isize, isize)  = (16,1);
+const NEXT_PIECE_LOCATION: (isize, isize)   = (16,1);
 ///the location of the held piece in blocks
-const HELD_PIECE_LOCATION:  (isize, isize)  = (0, 1);
+const HELD_PIECE_LOCATION: (isize, isize)   = (0, 1);
 ///the color of gameover text
-const GAME_OVER_COLOR:      [u8;4]          = [0xFF;4];
+const GAME_OVER_COLOR: [u8;4]               = [0xFF;4];
 
 
 ///possible piece movements
@@ -68,6 +73,12 @@ impl Board {
                 t => break t,
             }
         }};
+        let backdrop = image::load_from_memory(BOARD_SPRITE)?.to_rgba()
+            .chunks_exact(SPRITE_WIDTH*4).map(|r|
+                r.chunks_exact(4).map(|p|
+                    p.try_into().unwrap()
+                ).collect::<Vec<[u8;4]>>()
+            ).collect::<Vec<Vec<[u8;4]>>>();
         let mut board = Self {
             piece,
             shadow: spawn,
@@ -75,7 +86,7 @@ impl Board {
             held_piece: None,
             spawn,
             piece_index,
-            backdrop: Sprite::load(BOARD_SPRITE)?,
+            backdrop: Sprite::add(SPRITE_WIDTH, SPRITE_HEIGHT, backdrop),
             screen_dim: (0,0),
             padding: BOARD_PAD*pieces::BLOCK_SIZE,
             data: vec!(None; BOARD_WIDTH*BOARD_HEIGHT),
@@ -116,7 +127,10 @@ impl Board {
                 else {
                     unsafe {
                         #[allow(invalid_value)]
-                        let piece = mem::replace(&mut self.piece, mem::MaybeUninit::<pieces::Piece>::zeroed().assume_init());  //UNSAFE CODE BUT DONT WORRY ITS SAFE
+                        let piece = mem::replace(                                           //UNSAFE CODE BUT DONT WORRY ITS SAFE
+                            &mut self.piece,
+                            mem::MaybeUninit::<pieces::Piece>::zeroed().assume_init()
+                        );
                         self.held_piece = Some(piece);
                         if !self.next_piece() {
                             self.piece = self.held_piece.take().unwrap();

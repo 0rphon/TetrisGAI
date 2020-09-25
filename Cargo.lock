@@ -1665,6 +1665,7 @@ dependencies = [
  "criterion",
  "dynerr",
  "engine",
+ "image",
  "rand",
  "threadpool",
 ]

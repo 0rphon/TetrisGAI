@@ -363,6 +363,7 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //flattened board and pieces to 1d vec                                                      00h00m21s       |    47.62g/s    |    262    |    score variation: 350010
 //tried to trim a few more clones in ai                                                     00h00m22s       |    45.45g/s    |    298    |    score variation: 334920
 //CHANGING BENCHMARK TO 25X10X200                                                           00h01m50s       |    45.45g/s    |    307    |    score variation: 278325
+//changed nothing???                                                                        00h01m26s       |    58.14g/s    |    243    |    score variation: 255895
 
 //850~ placed per game
 //5 moves~ per place + drop
@@ -372,7 +373,6 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 
 
 //TO OPTIMIZE
-//convert everything to 1d vec (god help us)
 //benchmark AI functions
 //make lines cleared parameter like before instead of just score
 

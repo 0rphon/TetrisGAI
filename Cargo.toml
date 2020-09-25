@@ -12,6 +12,7 @@ dynerr = "0.1.23"
 engine = {git = "https://github.com/0rphon/Untitled_Engine"}
 rand = "0.7.3"
 threadpool = "1.8.1"
+image = "0.23.9"
 
 [profile.dev]
 opt-level = 3
