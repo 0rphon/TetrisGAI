@@ -19,6 +19,8 @@ pub fn run(train: bool, dry: bool) {
     }
 
     let parameters = ai::AiParameters {
+        min_lines_to_clear:             3,
+        lines_cleared_importance:       0.50,
         points_scored_importance:       0.50,
         piece_depth_importance:         0.25,
         max_height_importance:          0.75,
