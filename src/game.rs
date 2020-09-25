@@ -22,8 +22,6 @@ pub const BOARD_HEIGHT: usize               = 20;
 const BOARD_PAD: usize                      = 5;
 ///the screen sprite
 const BOARD_SPRITE: &[u8; 7408]             = include_bytes!("sprites/board.png");
-const SPRITE_WIDTH: usize                   = 640;
-const SPRITE_HEIGHT: usize                  = 640;
 ///the location of the next piece in blocks
 const NEXT_PIECE_LOCATION: (isize, isize)   = (16,1);
 ///the location of the held piece in blocks
@@ -73,12 +71,15 @@ impl Board {
                 t => break t,
             }
         }};
-        let backdrop = image::load_from_memory(BOARD_SPRITE)?.to_rgba()
-            .chunks_exact(SPRITE_WIDTH*4).map(|r|
-                r.chunks_exact(4).map(|p|
-                    p.try_into().unwrap()
-                ).collect::<Vec<[u8;4]>>()
-            ).collect::<Vec<Vec<[u8;4]>>>();
+
+        let backdrop = image::load_from_memory(BOARD_SPRITE)?.to_rgba();
+        let backdrop_dim = backdrop.dimensions();
+        let backdrop = backdrop.chunks_exact(backdrop_dim.0 as usize*4).map(|r|
+            r.chunks_exact(4).map(|p|
+                p.try_into().unwrap()
+            ).collect::<Vec<[u8;4]>>()
+        ).collect::<Vec<Vec<[u8;4]>>>();
+        
         let mut board = Self {
             piece,
             shadow: spawn,
@@ -86,7 +87,7 @@ impl Board {
             held_piece: None,
             spawn,
             piece_index,
-            backdrop: Sprite::add(SPRITE_WIDTH, SPRITE_HEIGHT, backdrop),
+            backdrop: Sprite::add(backdrop_dim.0 as usize, backdrop_dim.1 as usize, backdrop),
             screen_dim: (0,0),
             padding: BOARD_PAD*pieces::BLOCK_SIZE,
             data: vec!(None; BOARD_WIDTH*BOARD_HEIGHT),
