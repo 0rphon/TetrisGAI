@@ -180,10 +180,11 @@ fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &
                 .unwrap_or(0))
                 .checked_sub(total_elapsed)
                 .unwrap_or(0);
-    println!("ELAPSED: {}           |           TOTAL ETA: {}",
-        format_time(total_elapsed, "dhms"),
-        format_time(eta, "dhms"),
-    );
+    print!("ELAPSED: {}           ",format_time(total_elapsed, "dhms"));
+    if GENERATIONS != 0 {
+        print!("|           TOTAL ETA: {}",format_time(eta, "dhms"));
+    }
+    println!();
     let disp_num = {if BATCH_SIZE >= 10 {10} else {BATCH_SIZE}};
     println!("Ao{}   {:>7} |   {:>2}",
         disp_num,

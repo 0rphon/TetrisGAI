@@ -255,22 +255,18 @@ impl MoveData {
                 }                                                                                                   //#
                 log!(r, "ai.log");                                                                                  //#
             }                                                                                                       //#
+            log!(format!("current: {:?}", piece.location), "ai.log");                                               //#
+            for row in piece.data.chunks(piece.dim) {                                                               //#
+                let mut r = String::new();                                                                          //#
+                for column in row {                                                                                 //#
+                    if *column {                                                                                    //#
+                        r.push_str("[X]")                                                                           //#
+                    } else {r.push_str("[ ]")}                                                                      //#
+                }                                                                                                   //#
+                log!(r, "ai.log");                                                                                  //#
+            }                                                                                                       //#
+            log!(format!("Moves {:?}\n", moves), "ai.log");                                                         //#
             //#########################################################################################################
-            //LOGGING######################################################################################
-            log!(format!("current: {:?}", piece.location), "ai.log");                                   //#
-            for row in piece.data.chunks(piece.dim) {                                                   //#
-                let mut r = String::new();                                                              //#
-                for column in row {                                                                     //#
-                    if *column {                                                                        //#
-                        r.push_str("[X]")                                                               //#
-                    } else {r.push_str("[ ]")}                                                          //#
-                }                                                                                       //#
-                log!(r, "ai.log");                                                                      //#
-            }                                                                                           //#
-            //#############################################################################################
-            //LOGGING##########################################################
-            log!(format!("Moves {:?}\n", moves), "ai.log");                 //#
-            //#################################################################
         }
         moves
     }
