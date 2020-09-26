@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::str::Split;
+use std::mem;
 
 use rand::Rng;
 use threadpool::ThreadPool;
@@ -38,9 +39,9 @@ const SIM_TIMES: usize          = 50;   //50
 ///how many game sims can be running at once
 const POOL_SIZE: usize          = 10;   //10
 ///generation size
-const BATCH_SIZE: usize         = 200;  //200
+const BATCH_SIZE: usize         = 200;  //200           try to keep div by 5
 ///how many generations to run
-const GENERATIONS: usize        = 0;    //200       IF 0 THEN INFINITE
+const GENERATIONS: usize        = 0;    //200           IF 0 THEN INFINITE
 ///max level before timeout
 const MAX_LEVEL: usize          = 10;   //20
 ///how often to update screen
@@ -49,13 +50,12 @@ const DISPLAY_INTERVAL: usize   = 13;
 const U_RANGE: (usize, usize)   = (0, 5);       //max 4
 const F_RANGE: (f32, f32)       = (0.0, 1.0);
 
-const BREEDER_PERCENT: f32      = 0.10; //should all add up to 100%
-const PERCENT_SPLIT: f32        = 0.00;
-const PERCENT_SWAP: f32         = 0.80;
-const PERCENT_AVG: f32          = 0.00;
+const BREEDER_PERCENT: f32      = 0.20; //should all add up to 100% try to keep div by 5
+const PERCENT_CROSS: f32        = 0.35;
+const PERCENT_INSERT: f32       = 0.35;
 const PERCENT_RAND: f32         = 0.10;
 
-const SWAP_CHANCE: f32          = 0.25; //% of chromosomes will swap
+const INSERT_CHANCE: f32        = 0.10; //% chance chromosomes in insert pool will be inserted
 const MUTATION_CHANCE: f32      = 0.05; //% of chromosomes will mutate
 
 
@@ -357,7 +357,7 @@ fn get_best_results() -> DynResult<Vec<GameResult>> {
 }
 
 
-//takes breeders and breeds next generation
+///takes breeders and breeds next generation
 fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
     assert_eq!(breeders.len(), (BATCH_SIZE as f32*BREEDER_PERCENT) as usize);
     let mut rng = rand::thread_rng();
@@ -379,40 +379,23 @@ fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
         let fema = &params[couple.1];
         (male, fema)
     };
-    //left and right half's
-    for _ in 0..(BATCH_SIZE as f32*PERCENT_SPLIT) as usize {
+    //crossover
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_CROSS) as usize/2 {
         let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        let divide = rng.gen_range(0, kid.len());
-        for x in 0..divide {kid[x] = male[x]}
-        for y in divide..kid.len() {kid[y] = fema[y]}
-        kids.push(kid);
+        let mut kid1 = male.clone();
+        let mut kid2 = fema.clone();
+        let divide = rng.gen_range(0, kid1.len());
+        for x in 0..divide {mem::swap(&mut kid1[x], &mut kid2[x])}
+        kids.push(kid1);
+        kids.push(kid2);
     }
-    //swap fields
-    for _ in 0..(BATCH_SIZE as f32*PERCENT_SWAP) as usize {
+    //insert
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_INSERT) as usize {
         let (male, fema) = get_couple(rng);
         let mut kid = [Params::U(0);10];
         for x in 0..kid.len() {
-            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= SWAP_CHANCE {kid[x] = fema[x]}
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= INSERT_CHANCE {kid[x] = fema[x]}
             else {kid[x] = male[x]}
-        }
-        kids.push(kid);
-    }
-    //averages
-    for _ in 0..(BATCH_SIZE as f32*PERCENT_AVG) as usize {
-        let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        for x in 0..kid.len() {
-            if let Params::U(mu) = male[x] {
-                if let Params::U(fu) = fema[x] {
-                    kid[x] = Params::U((mu+fu)/2)
-                }
-            }
-            else if let Params::F(mf) = male[x] {
-                if let Params::F(ff) = fema[x] {
-                    kid[x] = Params::F((mf+ff)/2.0)
-                }
-            }
         }
         kids.push(kid);
     }
@@ -611,3 +594,29 @@ pub fn train() -> DynResult<()> {
 //    8 |  492266 |   19  |    490 | 2 : 0.924 : 0.006 : 0.571 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
 //    9 |  492208 |   19  |    493 | 2 : 0.906 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
 //   10 |  491048 |   19  |    498 | 2 : 0.923 : 0.006 : 0.572 : 0.053 : 0.143 : 0.012 : 0.981 : 0 : 0.428
+
+
+
+
+// using my old swap technique with randoms and stuff. forgot values right off
+// 30
+// 389221 |    9  |    246 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 372221 |    8  |    225 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 370686 |    9  |    239 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.171
+// 360268 |    8  |    237 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.645 : 0 : 0.171
+// 356055 |    8  |    219 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 353925 |    8  |    227 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.959 : 0 : 0.200
+// 350876 |    8  |    220 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 350709 |    8  |    227 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 348366 |    8  |    225 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.959 : 0 : 0.200
+// 347899 |    7  |    210 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 346583 |    8  |    223 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 345526 |    8  |    222 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 344997 |    8  |    222 | 2 : 0.939 : 0.004 : 0.240 : 0.018 : 0.102 : 0.024 : 0.959 : 0 : 0.200
+// 344731 |    8  |    227 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.645 : 0 : 0.171
+// 344360 |    8  |    217 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.959 : 0 : 0.200
+// 344086 |    8  |    229 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.709 : 0 : 0.171
+// 343237 |    7  |    212 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 339722 |    7  |    215 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 339516 |    8  |    217 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200
+// 338515 |    6  |    198 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.959 : 4 : 0.200

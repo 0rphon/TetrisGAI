@@ -12,7 +12,7 @@ use engine;
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
-pub fn run(train: bool) {
+pub fn run(train: bool, auto_loop: bool) {
     if train {
         check!(train::train());
         return
@@ -32,7 +32,8 @@ pub fn run(train: bool) {
     //    current_pillars_importance:     0.750,
     //};
     
-    //TRAINED   2 : 0.919 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.392
+    //TRAINED       ??? |    ?? |    ??? | 2 : 0.919 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.392        3.08M   LESS EFFICIENT
+    //TRAINED    392860 |    8  |    227 | 2 : 0.939 : 0.004 : 0.240 : 0.002 : 0.102 : 0.024 : 0.920 : 0 : 0.200        1.11M
     let parameters = ai::AiParameters {
         min_lines_to_clear:             2,
         lines_cleared_importance:       0.919,
@@ -81,7 +82,7 @@ pub fn run(train: bool) {
                 ai_radio = {
                     match ai_radio {
                         Some(_) => None,
-                        None => Some(ai::start(parameters.clone(), true)),
+                        None => Some(ai::start(parameters.clone(), false)),     //turn on to debug
                     }
                 }
             }
@@ -94,7 +95,7 @@ pub fn run(train: bool) {
                         ai::Move::Rotate    => {board.rotate_piece();}
                         ai::Move::Drop      => {check!(board.drop_piece());},
                         ai::Move::Hold      => {check!(board.hold_piece());},
-                        ai::Move::Restart   => {},//check!(board.reset()),
+                        ai::Move::Restart   => if auto_loop {check!(board.reset())},
                         ai::Move::None      => {},
                     }
                 }
@@ -147,8 +148,8 @@ pub fn run(train: bool) {
             }
 
             //handles updating
+            check!(board.try_update());
             if ai_radio.is_some() {check!(ai_radio.as_ref().unwrap().send_board(board.get_board()))} 
-            else {check!(board.try_update());}
             window.window.request_redraw();
         }
     });
