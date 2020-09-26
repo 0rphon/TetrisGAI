@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex, mpsc};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::str::Split;
 
 use rand::Rng;
 use threadpool::ThreadPool;
@@ -215,17 +216,24 @@ fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &
 
 
 
-macro_rules! U {
+macro_rules! u {
     ($x:expr) => {
         {if let Self::U(i) = $x {i} else {panic!("Invalid Param")}}
     };
 }
 
-macro_rules! F {
+macro_rules! f {
     ($x:expr) => {
         {if let Self::F(i) = $x {i} else {panic!("Invalid Param")}}
     };
 }
+
+macro_rules! params_parse {
+    ($x:expr) => {
+        $x.next().ok_or("Failed to parse")?.replace(" ","").parse()?
+    };
+}
+
 
 #[derive(Clone, Copy, Debug)]
 enum Params {
@@ -251,17 +259,34 @@ impl Params {
 
     fn construct(params: [Self;10]) -> ai::AiParameters {
         ai::AiParameters {
-            min_lines_to_clear:             U!(params[0]),
-            lines_cleared_importance:       F!(params[1]),
-            points_scored_importance:       F!(params[2]),
-            piece_depth_importance:         F!(params[3]),
-            max_height_importance:          F!(params[4]),
-            avg_height_importance:          F!(params[5]),
-            height_variation_importance:    F!(params[6]),
-            current_holes_importance:       F!(params[7]),
-            max_pillar_height:              U!(params[8]),
-            current_pillars_importance:     F!(params[9]),
+            min_lines_to_clear:             u!(params[0]),
+            lines_cleared_importance:       f!(params[1]),
+            points_scored_importance:       f!(params[2]),
+            piece_depth_importance:         f!(params[3]),
+            max_height_importance:          f!(params[4]),
+            avg_height_importance:          f!(params[5]),
+            height_variation_importance:    f!(params[6]),
+            current_holes_importance:       f!(params[7]),
+            max_pillar_height:              u!(params[8]),
+            current_pillars_importance:     f!(params[9]),
         }
+    }
+
+    fn parse(mut params: Split<char>) -> DynResult<ai::AiParameters> {
+        Ok(
+            ai::AiParameters {
+                min_lines_to_clear:             params_parse!(params),
+                lines_cleared_importance:       params_parse!(params),
+                points_scored_importance:       params_parse!(params),
+                piece_depth_importance:         params_parse!(params),
+                max_height_importance:          params_parse!(params),
+                avg_height_importance:          params_parse!(params),
+                height_variation_importance:    params_parse!(params),
+                current_holes_importance:       params_parse!(params),
+                max_pillar_height:              params_parse!(params),
+                current_pillars_importance:     params_parse!(params),
+            }
+        )
     }
 }
 
@@ -290,33 +315,17 @@ fn random_generation() -> Vec<ai::AiParameters> {
 fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
     match File::open("species.log") {
         Ok(file) => {
-            let mut prog = BufReader::new(file).lines().map(|l| l.unwrap());
-            let gen = prog.next().unwrap().parse().unwrap();
+            let mut prog = BufReader::new(file).lines().map(|l| Ok(l?)).collect::<DynResult<Vec<String>>>()?.into_iter();
+            let gen = prog.next().ok_or("Failed to parse")?.parse()?;
             let generation = prog.map(|line| {
                 let mut fields = line.split('|');
-                GameResult {
-                    score: fields.next().unwrap().replace(" ","").parse().unwrap(),
-                    level: fields.next().unwrap().replace(" ","").parse().unwrap(),
-                    placed: fields.next().unwrap().replace(" ","").parse().unwrap(),
-                    parameters: {
-                        let mut params = fields.next().unwrap().split(':');
-                        Some(
-                            Params::construct ([
-                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                            ])
-                        )
-                    }
-                }
-            }).collect();
+                Ok(GameResult {
+                    score: params_parse!(fields),
+                    level: params_parse!(fields),
+                    placed: params_parse!(fields),
+                    parameters: Some(Params::parse(fields.next().ok_or("Failed to parse")?.split(':'))?),
+                })
+            }).collect::<DynResult<Vec<GameResult>>>()?;
             Ok(Some((gen, generation)))
         },
         Err(e) if e.kind() == NotFound => {Ok(None)},
@@ -329,32 +338,16 @@ fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
 fn get_best_results() -> DynResult<Vec<GameResult>> {
     match File::open("best.log") {
         Ok(file) => {
-            let prog = BufReader::new(file).lines().map(|l| l.unwrap());
+            let prog = BufReader::new(file).lines().map(|l| Ok(l?)).collect::<DynResult<Vec<String>>>()?.into_iter();
             let best_results = prog.map(|line| {
                 let mut fields = line.split('|');
-                GameResult {
-                    score: fields.next().unwrap().replace(" ","").parse().unwrap(),
-                    level: fields.next().unwrap().replace(" ","").parse().unwrap(),
-                    placed: fields.next().unwrap().replace(" ","").parse().unwrap(),
-                    parameters: {
-                        let mut params = fields.next().unwrap().split(':');
-                        Some(
-                            Params::construct ([
-                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
-                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
-                            ])
-                        )
-                    }
-                }
-            }).collect();
+                Ok(GameResult {
+                    score: params_parse!(fields),
+                    level: params_parse!(fields),
+                    placed: params_parse!(fields),
+                    parameters: Some(Params::parse(fields.next().ok_or("Failed to parse")?.split(':'))?),
+                })
+            }).collect::<DynResult<Vec<GameResult>>>()?;
             Ok(best_results)
         }
         Err(e) if e.kind() == NotFound => {Ok(Vec::new())},
