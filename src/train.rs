@@ -30,19 +30,25 @@ use threadpool::ThreadPool;
 //100x200 8:38 var 38744
 
 ///times to run each AIs game
-const SIM_TIMES: usize          = 25;   //25
+const SIM_TIMES: usize          = 50;   //25
 ///how many game sims can be running at once
 const POOL_SIZE: usize          = 10;   //10
 ///generation size
 const BATCH_SIZE: usize         = 200;  //200
 ///how many generations to run
-const GENERATIONS: usize        = 10;   //200
+const GENERATIONS: usize        = 100;  //200
 ///max level before timeout
-const MAX_LEVEL: usize          = 50;
+const MAX_LEVEL: usize          = 20;
 ///how often to update screen
 const DISPLAY_INTERVAL: usize   = 13;
 
-const MUTATION_CHANCE: f32      = 00.3; //of chromosomes will mutate
+const BREEDER_PERCENT: f32      = 0.10; //should all add up to 100%
+const PERCENT_SPLIT: f32        = 0.00;
+const PERCENT_SWAP: f32         = 0.90;
+const PERCENT_AVG: f32          = 0.00;
+
+const SWAP_CHANCE: f32          = 0.25; //% of chromosomes will swap
+const MUTATION_CHANCE: f32      = 0.05; //% of chromosomes will mutate
 
 
 ///handle to the thread doing updates
@@ -186,6 +192,154 @@ fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+macro_rules! U {
+    ($x:expr) => {
+        {if let Self::U(i) = $x {i} else {panic!("Invalid Param")}}
+    };
+}
+
+macro_rules! F {
+    ($x:expr) => {
+        {if let Self::F(i) = $x {i} else {panic!("Invalid Param")}}
+    };
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Params {
+    F(f32),
+    U(usize),
+}
+
+impl Params {
+    fn get(params: &ai::AiParameters) -> [Self;10] {
+        [
+            Self::U(params.min_lines_to_clear),
+            Self::F(params.lines_cleared_importance),
+            Self::F(params.points_scored_importance),
+            Self::F(params.piece_depth_importance),
+            Self::F(params.max_height_importance),
+            Self::F(params.avg_height_importance),
+            Self::F(params.height_variation_importance),
+            Self::F(params.current_holes_importance),
+            Self::U(params.max_pillar_height),
+            Self::F(params.current_pillars_importance),
+        ]
+    }
+
+    fn construct(params: [Self;10]) -> ai::AiParameters {
+        ai::AiParameters {
+            min_lines_to_clear:             U!(params[0]),
+            lines_cleared_importance:       F!(params[1]),
+            points_scored_importance:       F!(params[2]),
+            piece_depth_importance:         F!(params[3]),
+            max_height_importance:          F!(params[4]),
+            avg_height_importance:          F!(params[5]),
+            height_variation_importance:    F!(params[6]),
+            current_holes_importance:       F!(params[7]),
+            max_pillar_height:              U!(params[8]),
+            current_pillars_importance:     F!(params[9]),
+        }
+    }
+}
+
+
+
+fn breed_next_gen(last_gen: Vec<GameResult>) -> Vec<ai::AiParameters> {
+    let breeders = &last_gen[0..(BATCH_SIZE as f32*BREEDER_PERCENT) as usize];
+    let mut rng = rand::thread_rng();
+    let mut kids = Vec::with_capacity(BATCH_SIZE);
+    let params = breeders.iter().map(|b|
+        Params::get(&b.parameters.as_ref().unwrap())
+    ).collect::<Vec<[Params;10]>>();
+
+    let get_couple = |mut rng: rand::prelude::ThreadRng| {
+        let couple = {
+            let (mut x, mut y) = (rng.gen_range(0,params.len()), rng.gen_range(0,params.len()));
+            while x==y {
+                x = rng.gen_range(0,params.len());
+                y = rng.gen_range(0,params.len());
+            }
+            (x,y)
+        };
+        let male = &params[couple.0];
+        let fema = &params[couple.1];
+        (male, fema)
+    };
+
+    //left and right half's
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_SPLIT) as usize {
+        let (male, fema) = get_couple(rng);
+        let mut kid = [Params::U(0);10];
+        let divide = rng.gen_range(0, kid.len());
+        for x in 0..divide {kid[x] = male[x]}
+        for y in divide..kid.len() {kid[y] = fema[y]}
+        kids.push(kid);
+    }
+
+    //swap fields
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_SWAP) as usize {
+        let (male, fema) = get_couple(rng);
+        let mut kid = [Params::U(0);10];
+        for x in 0..kid.len() {
+            if rng.gen_range(0.0,1.0) <= SWAP_CHANCE {kid[x] = fema[x]}
+            else {kid[x] = male[x]}
+        }
+        kids.push(kid);
+    }
+
+    //averages
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_AVG) as usize {
+        let (male, fema) = get_couple(rng);
+        let mut kid = [Params::U(0);10];
+        for x in 0..kid.len() {
+            if let Params::U(mu) = male[x] {
+                if let Params::U(fu) = fema[x] {
+                    kid[x] = Params::U((mu+fu)/2)
+                }
+            }
+            else if let Params::F(mf) = male[x] {
+                if let Params::F(ff) = fema[x] {
+                    kid[x] = Params::F((mf+ff)/2.0)
+                }
+            }
+        }
+        kids.push(kid);
+    }
+
+    //mutate
+    for cronenberg in &mut kids {
+        for gene in cronenberg {
+            if rng.gen_range(0.0,1.0) <= MUTATION_CHANCE {
+                match gene {
+                    Params::U(u) => *u = rng.gen_range(0,5),
+                    Params::F(f) => *f = rng.gen_range(0.0,1.0),
+                }
+            }
+        }
+    }
+    kids.extend(params);
+    assert_eq!(kids.len(), BATCH_SIZE);
+    kids.iter().map(|k| Params::construct(*k)).collect()
+}
+
+
+
 ///plays a game SIM_TIMES times
 fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mutex<usize>>) -> GameResult {
     let mut results = Vec::new();
@@ -249,134 +403,6 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
     Ok(results)
 }
 
-macro_rules! U {
-    ($x:expr) => {
-        {if let Self::U(i) = $x {i} else {panic!("Invalid Param")}}
-    };
-}
-
-macro_rules! F {
-    ($x:expr) => {
-        {if let Self::F(i) = $x {i} else {panic!("Invalid Param")}}
-    };
-}
-
-#[derive(Clone, Copy, Debug)]
-enum Params {
-    F(f32),
-    U(usize),
-}
-
-impl Params {
-    fn get(params: &ai::AiParameters) -> [Self;10] {
-        [
-            Self::U(params.min_lines_to_clear),
-            Self::F(params.lines_cleared_importance),
-            Self::F(params.points_scored_importance),
-            Self::F(params.piece_depth_importance),
-            Self::F(params.max_height_importance),
-            Self::F(params.avg_height_importance),
-            Self::F(params.height_variation_importance),
-            Self::F(params.current_holes_importance),
-            Self::U(params.max_pillar_height),
-            Self::F(params.current_pillars_importance),
-        ]
-    }
-
-    fn construct(params: [Self;10]) -> ai::AiParameters {
-        ai::AiParameters {
-            min_lines_to_clear:             U!(params[0]),
-            lines_cleared_importance:       F!(params[1]),
-            points_scored_importance:       F!(params[2]),
-            piece_depth_importance:         F!(params[3]),
-            max_height_importance:          F!(params[4]),
-            avg_height_importance:          F!(params[5]),
-            height_variation_importance:    F!(params[6]),
-            current_holes_importance:       F!(params[7]),
-            max_pillar_height:              U!(params[8]),
-            current_pillars_importance:     F!(params[9]),
-        }
-    }
-}
-
-
-fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
-    let mut rng = rand::thread_rng();
-    let mut kids = Vec::with_capacity(BATCH_SIZE);
-    let params = breeders.iter().map(|b|
-        Params::get(&b.parameters.as_ref().unwrap())
-    ).collect::<Vec<[Params;10]>>();
-
-    let get_couple = |mut rng: rand::prelude::ThreadRng| {
-        let couple = {
-            let (mut x, mut y) = (rng.gen_range(0,params.len()), rng.gen_range(0,params.len()));
-            while x==y {
-                x = rng.gen_range(0,params.len());
-                y = rng.gen_range(0,params.len());
-            }
-            (x,y)
-        };
-        let male = &params[couple.0];
-        let fema = &params[couple.1];
-        (male, fema)
-    };
-
-    //left and right half's
-    for _ in 0..(BATCH_SIZE as f32*0.30) as usize {
-        let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        let divide = rng.gen_range(0, kid.len());
-        for x in 0..divide {kid[x] = male[x]}
-        for y in divide..kid.len() {kid[y] = fema[y]}
-        kids.push(kid);
-    }
-
-    //random fields
-    for _ in 0..(BATCH_SIZE as f32*0.30) as usize {
-        let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        for x in 0..kid.len() {
-            match rng.gen_range(0,2) {
-                0 => kid[x] = male[x],
-                _ => kid[x] = fema[x],
-            }
-        }
-        kids.push(kid);
-    }
-
-    //averages
-    for _ in 0..(BATCH_SIZE as f32*0.30) as usize {
-        let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        for x in 0..kid.len() {
-            if let Params::U(mu) = male[x] {
-                if let Params::U(fu) = fema[x] {
-                    kid[x] = Params::U((mu+fu)/2)
-                }
-            }
-            else if let Params::F(mf) = male[x] {
-                if let Params::F(ff) = fema[x] {
-                    kid[x] = Params::F((mf+ff)/2.0)
-                }
-            }
-        }
-        kids.push(kid);
-    }
-
-    //mutate
-    for cronenberg in &mut kids {
-        if rng.gen_range(0.0,100.0) < MUTATION_CHANCE*cronenberg.len() as f32 {
-            match &mut cronenberg[rng.gen_range(0,cronenberg.len())] {
-                Params::U(u) => *u = rng.gen_range(0,5),
-                Params::F(f) => *f = rng.gen_range(0.0,1.0),
-            }
-        }
-    }
-    kids.extend(params);
-    assert_eq!(kids.len(), BATCH_SIZE);
-    kids.iter().map(|k| Params::construct(*k)).collect()
-}
-
 
 
 ///does the actual training
@@ -425,19 +451,20 @@ pub fn train(dry_run: bool) -> DynResult<()> {
         let results = check!(do_generation(generation));
         display_gen_info(total_start, start, gen, &results);
         best_results.extend_from_slice(&results[0..{if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}}]);
-        generation = breed_next_gen(&results[0..BATCH_SIZE/10]);
+        best_results.sort_by(|a, b| b.score.cmp(&a.score));
+        if best_results.len() > 10 {best_results.drain(10..);}
+        clean!("train.log");
+        for res in &best_results {log!(format!("{}", res), "train.log");}
+        generation = breed_next_gen(results);
     }
     let total_elapsed = Instant::now()-total_start;
     println!("{} generations completed in {}", GENERATIONS, format_time(total_elapsed.as_secs(), "dhms"));
     println!("Average of 1 generation every {}", format_time((total_elapsed/GENERATIONS as u32).as_secs(),"hms"));
 
-    best_results.sort_by(|a, b| b.score.cmp(&a.score));
     println!("BEST RESULTS");
     GameResult::print_header();
     let disp_num = {if GENERATIONS >= 10 {10} else {GENERATIONS}};
-    for i in 0..disp_num {
-        println!("  {:>2} |{}", i+1, best_results[i]);
-    }
+    for i in 0..disp_num {println!("  {:>2} |{}", i+1, best_results[i])}
     Ok(())
 }
 
@@ -519,4 +546,22 @@ pub fn train(dry_run: bool) -> DynResult<()> {
 
 //TO OPTIMIZE
 //benchmark AI functions
-//WHY IS FIRST GEN FAST AND EVERY OTHER GEN 50% SLOWER?
+//WHY IS FIRST GEN FAST AND EVERY OTHER GEN 50% SLOWER?  it has to be something about the memory layout of the breeded generation
+
+
+
+//50x10x200x100 max lvl 20 breed params 0.10 0.30 0.30 2 0.30 00.3
+// 100 generations completed in 00d07h21m23s
+// Average of 1 generation every 00h04m24s
+// BEST RESULTS
+// RANK |  SCORE  | LEVEL | PLACED | PARAMS
+//    1 |  513214 |   18  |    461 | 2 : 0.919 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.392
+//    2 |  503686 |   19  |    497 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.962 : 0 : 0.436
+//    3 |  502776 |   18  |    482 | 2 : 0.923 : 0.006 : 0.572 : 0.019 : 0.143 : 0.012 : 0.986 : 0 : 0.417
+//    4 |  499429 |   19  |    496 | 2 : 0.923 : 0.006 : 0.572 : 0.052 : 0.143 : 0.012 : 0.983 : 0 : 0.418
+//    5 |  496683 |   19  |    492 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.461
+//    6 |  495158 |   19  |    495 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.461
+//    7 |  493801 |   19  |    490 | 2 : 0.924 : 0.006 : 0.604 : 0.053 : 0.141 : 0.012 : 0.995 : 0 : 0.503
+//    8 |  492266 |   19  |    490 | 2 : 0.924 : 0.006 : 0.571 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
+//    9 |  492208 |   19  |    493 | 2 : 0.906 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
+//   10 |  491048 |   19  |    498 | 2 : 0.923 : 0.006 : 0.572 : 0.053 : 0.143 : 0.012 : 0.981 : 0 : 0.428
