@@ -1,3 +1,4 @@
+use std::io::ErrorKind::NotFound;
 use super::game::{Board, Move};
 use super::ai;
 use dynerr::*;
@@ -5,6 +6,9 @@ use dynerr::*;
 use std::{fmt, thread};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex, mpsc};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::str::Split;
 
 use rand::Rng;
 use threadpool::ThreadPool;
@@ -30,20 +34,29 @@ use threadpool::ThreadPool;
 //100x200 8:38 var 38744
 
 ///times to run each AIs game
-const SIM_TIMES: usize      = 25;   //25
+const SIM_TIMES: usize          = 50;   //50
 ///how many game sims can be running at once
-const POOL_SIZE: usize      = 10;   //10
+const POOL_SIZE: usize          = 10;   //10
 ///generation size
-const BATCH_SIZE: usize     = 200;  //200
+const BATCH_SIZE: usize         = 200;  //200
 ///how many generations to run
-const GENERATIONS: usize    = 1;    //200
+const GENERATIONS: usize        = 0;    //200       IF 0 THEN INFINITE
 ///max level before timeout
-const MAX_LEVEL: usize      = 50;
+const MAX_LEVEL: usize          = 10;   //20
 ///how often to update screen
-const DISPLAY_INTERVAL: usize = 13;
+const DISPLAY_INTERVAL: usize   = 13;
 
+const U_RANGE: (usize, usize)   = (0, 5);       //max 4
+const F_RANGE: (f32, f32)       = (0.0, 1.0);
 
+const BREEDER_PERCENT: f32      = 0.10; //should all add up to 100%
+const PERCENT_SPLIT: f32        = 0.00;
+const PERCENT_SWAP: f32         = 0.80;
+const PERCENT_AVG: f32          = 0.00;
+const PERCENT_RAND: f32         = 0.10;
 
+const SWAP_CHANCE: f32          = 0.25; //% of chromosomes will swap
+const MUTATION_CHANCE: f32      = 0.05; //% of chromosomes will mutate
 
 
 ///handle to the thread doing updates
@@ -73,7 +86,7 @@ impl DisplayThread {
                     .checked_sub(elapsed)
                     .unwrap_or(0);
                 println!(
-                    "{}    |    {:>3}    |    {:5.02}g/s    |    ETA: {}",
+                    "{}    |   {:>4}    |    {:5.02}g/s    |    ETA: {}",
                     format_time(elapsed, "hms"),
                     format!("{:02}%",percent),
                     {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}},
@@ -96,6 +109,7 @@ impl DisplayThread {
 
 
 ///the results of a game
+#[derive(Clone)]
 struct GameResult {
     score: usize,
     level: usize,
@@ -151,110 +165,289 @@ fn format_time(seconds: u64, formatting: &str) -> String {
     disp
 }
 
-
-///does the actual training
-pub fn train(dry_run: bool) -> DynResult<()> {
-    if dry_run {println!("Starting Dry Run")}
-    else {println!("Starting Live Run")}
-    let mut best_results = Vec::new();
-    let total_start = Instant::now();
-    for gen in 0..GENERATIONS {
-        println!("STARTING GENERATION {}", gen+1);
-        let generation = {
-            if dry_run {
-                (0..BATCH_SIZE).map(|_| {
-                    ai::AiParameters {
-                        points_scored_importance:       0.50,
-                        piece_depth_importance:         0.25,
-                        max_height_importance:          0.75,
-                        avg_height_importance:          0.0,
-                        height_variation_importance:    0.5,
-                        current_holes_importance:       3.5,
-                        max_pillar_height:              2,
-                        current_pillars_importance:     0.75,
-                    }
-                }).collect::<Vec<ai::AiParameters>>()
-            } else {
-                let mut rng = rand::thread_rng();
-                (0..BATCH_SIZE).map(|_| {
-                    ai::AiParameters {
-                        points_scored_importance:       rng.gen_range(0.0,1.0),
-                        piece_depth_importance:         rng.gen_range(0.0,1.0),
-                        max_height_importance:          rng.gen_range(0.0,1.0),
-                        avg_height_importance:          rng.gen_range(0.0,1.0),
-                        height_variation_importance:    rng.gen_range(0.0,1.0),
-                        current_holes_importance:       rng.gen_range(0.0,1.0),
-                        max_pillar_height:              rng.gen_range(0,5),
-                        current_pillars_importance:     rng.gen_range(0.0,1.0),
-                    }
-                }).collect::<Vec<ai::AiParameters>>()
-            }
-        };
-        
-        
-        let start = Instant::now();
-        let mut results = check!(do_generation(generation));
-        let elapsed = (Instant::now()-start).as_secs();
-        println!("GENERATION {} COMPLETED IN {}       |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
-            gen+1,
-            format_time(elapsed, "hms"),
-            (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
-            results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
-            results[0].score-results[BATCH_SIZE-1].score
-        );
-        let total_elapsed = (Instant::now()-total_start).as_secs();
-        let eta = ((GENERATIONS as u64 * elapsed)
-                    .checked_div(gen as u64)
-                    .unwrap_or(0))
-                    .checked_sub(total_elapsed)
-                    .unwrap_or(0);
-        println!("ELAPSED: {}           |           TOTAL ETA: {}",
-            format_time(total_elapsed, "dhms"),
-            format_time(eta, "dhms"),
-        );
-        GameResult::print_header();
-        let disp_num = {if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}};
-        for i in 0..disp_num {
-            println!("  {:>2} |{}", i+1, results[i]);
-            best_results.push(results.remove(i));
-        }
-        println!("\n");
+fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &Vec<GameResult>) {
+    let elapsed = (Instant::now()-start).as_secs();
+    println!("GENERATION {} COMPLETED IN {}       |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
+        gen+1,
+        format_time(elapsed, "hms"),
+        (SIM_TIMES*BATCH_SIZE) as f32/elapsed as f32,
+        results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
+        results[0].score-results[BATCH_SIZE-1].score
+    );
+    let total_elapsed = (Instant::now()-total_start).as_secs();
+    let eta = ((GENERATIONS as u64 * total_elapsed)
+                .checked_div(gen as u64)
+                .unwrap_or(0))
+                .checked_sub(total_elapsed)
+                .unwrap_or(0);
+    print!("ELAPSED: {}           ",format_time(total_elapsed, "dhms"));
+    if GENERATIONS != 0 {
+        print!("|           TOTAL ETA: {}",format_time(eta, "dhms"));
     }
-    let total_elapsed = Instant::now()-total_start;
-    println!("{} generations completed in {}", GENERATIONS, format_time(total_elapsed.as_secs(), "dhms"));
-    println!("Average of 1 generation every {}", format_time((total_elapsed/GENERATIONS as u32).as_secs(),"hms"));
-
-    best_results.sort_by(|a, b| b.score.cmp(&a.score));
-    println!("BEST RESULTS");
+    println!();
+    let disp_num = {if BATCH_SIZE >= 10 {10} else {BATCH_SIZE}};
+    println!("Ao{}   {:>7} |   {:>2}",
+        disp_num,
+        results[0..disp_num].iter().map(|r| r.score).sum::<usize>()/disp_num,
+        results[0..disp_num].iter().map(|r| r.level).sum::<usize>()/disp_num,
+    );
     GameResult::print_header();
-    let disp_num = {if GENERATIONS >= 10 {10} else {GENERATIONS}};
+    let disp_num = {if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}};
     for i in 0..disp_num {
-        println!("  {:>2} |{}", i+1, best_results[i]);
+        println!("  {:>2} |{}", i+1, results[i]);
     }
-    Ok(())
+    println!("\n");
 }
 
-///takes Vec<Parameters> and does generation
-fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>> {
-    let master_board = Arc::new(Board::new_board()?);
-    let progress = Arc::new(Mutex::new(0));
-    let display_thread = DisplayThread::start(Arc::clone(&progress));
-    let (tx, rx) = mpsc::channel();
 
-    let pool = ThreadPool::new(POOL_SIZE);
-    for child in generation {
-        let board_ref = Arc::clone(&master_board);
-        let progress = Arc::clone(&progress);
-        let tx = tx.clone();
-        pool.execute(move || check!(tx.send(play_game(board_ref, child, progress))));
-    }
-    pool.join();
 
-    let mut results = rx.iter().take(BATCH_SIZE).collect::<Vec<GameResult>>();
-    display_thread.stop()?;
-    results.sort_by(|a, b| b.score.cmp(&a.score));
-    Ok(results)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+macro_rules! u {
+    ($x:expr) => {
+        {if let Self::U(i) = $x {i} else {panic!("Invalid Param")}}
+    };
 }
+
+macro_rules! f {
+    ($x:expr) => {
+        {if let Self::F(i) = $x {i} else {panic!("Invalid Param")}}
+    };
+}
+
+macro_rules! params_parse {
+    ($x:expr) => {
+        $x.next().ok_or("Failed to parse")?.replace(" ","").parse()?
+    };
+}
+
+
+#[derive(Clone, Copy, Debug)]
+enum Params {
+    F(f32),
+    U(usize),
+}
+
+impl Params {
+    fn get(params: &ai::AiParameters) -> [Self;10] {
+        [
+            Self::U(params.min_lines_to_clear),
+            Self::F(params.lines_cleared_importance),
+            Self::F(params.points_scored_importance),
+            Self::F(params.piece_depth_importance),
+            Self::F(params.max_height_importance),
+            Self::F(params.avg_height_importance),
+            Self::F(params.height_variation_importance),
+            Self::F(params.current_holes_importance),
+            Self::U(params.max_pillar_height),
+            Self::F(params.current_pillars_importance),
+        ]
+    }
+
+    fn construct(params: [Self;10]) -> ai::AiParameters {
+        ai::AiParameters {
+            min_lines_to_clear:             u!(params[0]),
+            lines_cleared_importance:       f!(params[1]),
+            points_scored_importance:       f!(params[2]),
+            piece_depth_importance:         f!(params[3]),
+            max_height_importance:          f!(params[4]),
+            avg_height_importance:          f!(params[5]),
+            height_variation_importance:    f!(params[6]),
+            current_holes_importance:       f!(params[7]),
+            max_pillar_height:              u!(params[8]),
+            current_pillars_importance:     f!(params[9]),
+        }
+    }
+
+    fn parse(mut params: Split<char>) -> DynResult<ai::AiParameters> {
+        Ok(
+            ai::AiParameters {
+                min_lines_to_clear:             params_parse!(params),
+                lines_cleared_importance:       params_parse!(params),
+                points_scored_importance:       params_parse!(params),
+                piece_depth_importance:         params_parse!(params),
+                max_height_importance:          params_parse!(params),
+                avg_height_importance:          params_parse!(params),
+                height_variation_importance:    params_parse!(params),
+                current_holes_importance:       params_parse!(params),
+                max_pillar_height:              params_parse!(params),
+                current_pillars_importance:     params_parse!(params),
+            }
+        )
+    }
+}
+
+
+fn random_generation() -> Vec<ai::AiParameters> {
+    let mut rng = rand::thread_rng();
+    (0..BATCH_SIZE).map(|_| {
+        ai::AiParameters {
+            min_lines_to_clear:             rng.gen_range(U_RANGE.0, U_RANGE.1),
+            lines_cleared_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+            points_scored_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+            piece_depth_importance:         rng.gen_range(F_RANGE.0, F_RANGE.1),
+            max_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
+            avg_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
+            height_variation_importance:    rng.gen_range(F_RANGE.0, F_RANGE.1),
+            current_holes_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+            max_pillar_height:              rng.gen_range(U_RANGE.0, U_RANGE.1),
+            current_pillars_importance:     rng.gen_range(F_RANGE.0, F_RANGE.1),
+        }
+    }).collect::<Vec<ai::AiParameters>>()
+}
+
+
+
+//attempts to get the progress of last species trained
+fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
+    match File::open("species.log") {
+        Ok(file) => {
+            let mut prog = BufReader::new(file).lines().map(|l| Ok(l?)).collect::<DynResult<Vec<String>>>()?.into_iter();
+            let gen = prog.next().ok_or("Failed to parse")?.parse()?;
+            let generation = prog.map(|line| {
+                let mut fields = line.split('|');
+                Ok(GameResult {
+                    score: params_parse!(fields),
+                    level: params_parse!(fields),
+                    placed: params_parse!(fields),
+                    parameters: Some(Params::parse(fields.next().ok_or("Failed to parse")?.split(':'))?),
+                })
+            }).collect::<DynResult<Vec<GameResult>>>()?;
+            Ok(Some((gen, generation)))
+        },
+        Err(e) if e.kind() == NotFound => {Ok(None)},
+        Err(e) => dynerr!(e),
+    }
+}
+
+
+//gets the best results, or empty vec if best.log doesnt exist
+fn get_best_results() -> DynResult<Vec<GameResult>> {
+    match File::open("best.log") {
+        Ok(file) => {
+            let prog = BufReader::new(file).lines().map(|l| Ok(l?)).collect::<DynResult<Vec<String>>>()?.into_iter();
+            let best_results = prog.map(|line| {
+                let mut fields = line.split('|');
+                Ok(GameResult {
+                    score: params_parse!(fields),
+                    level: params_parse!(fields),
+                    placed: params_parse!(fields),
+                    parameters: Some(Params::parse(fields.next().ok_or("Failed to parse")?.split(':'))?),
+                })
+            }).collect::<DynResult<Vec<GameResult>>>()?;
+            Ok(best_results)
+        }
+        Err(e) if e.kind() == NotFound => {Ok(Vec::new())},
+        Err(e) => dynerr!(e),
+    }
+}
+
+
+//takes breeders and breeds next generation
+fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
+    assert_eq!(breeders.len(), (BATCH_SIZE as f32*BREEDER_PERCENT) as usize);
+    let mut rng = rand::thread_rng();
+    let mut kids = Vec::with_capacity(BATCH_SIZE);
+    let params = breeders.iter().map(|b|
+        Params::get(&b.parameters.as_ref().unwrap())
+    ).collect::<Vec<[Params;10]>>();
+    //closure to get random pair
+    let get_couple = |mut rng: rand::prelude::ThreadRng| {
+        let couple = {
+            let (mut x, mut y) = (rng.gen_range(0,params.len()), rng.gen_range(0,params.len()));
+            while x==y {
+                x = rng.gen_range(0,params.len());
+                y = rng.gen_range(0,params.len());
+            }
+            (x,y)
+        };
+        let male = &params[couple.0];
+        let fema = &params[couple.1];
+        (male, fema)
+    };
+    //left and right half's
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_SPLIT) as usize {
+        let (male, fema) = get_couple(rng);
+        let mut kid = [Params::U(0);10];
+        let divide = rng.gen_range(0, kid.len());
+        for x in 0..divide {kid[x] = male[x]}
+        for y in divide..kid.len() {kid[y] = fema[y]}
+        kids.push(kid);
+    }
+    //swap fields
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_SWAP) as usize {
+        let (male, fema) = get_couple(rng);
+        let mut kid = [Params::U(0);10];
+        for x in 0..kid.len() {
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= SWAP_CHANCE {kid[x] = fema[x]}
+            else {kid[x] = male[x]}
+        }
+        kids.push(kid);
+    }
+    //averages
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_AVG) as usize {
+        let (male, fema) = get_couple(rng);
+        let mut kid = [Params::U(0);10];
+        for x in 0..kid.len() {
+            if let Params::U(mu) = male[x] {
+                if let Params::U(fu) = fema[x] {
+                    kid[x] = Params::U((mu+fu)/2)
+                }
+            }
+            else if let Params::F(mf) = male[x] {
+                if let Params::F(ff) = fema[x] {
+                    kid[x] = Params::F((mf+ff)/2.0)
+                }
+            }
+        }
+        kids.push(kid);
+    }
+    //generate new randoms
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_RAND) as usize {
+        let kid = [
+            Params::U(rng.gen_range(U_RANGE.0, U_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::U(rng.gen_range(U_RANGE.0, U_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+        ];
+        kids.push(kid);
+    }
+    //mutate
+    for cronenberg in &mut kids {
+        for gene in cronenberg {
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= MUTATION_CHANCE {
+                match gene {
+                    Params::U(u) => *u = rng.gen_range(U_RANGE.0, U_RANGE.1),
+                    Params::F(f) => *f = rng.gen_range(F_RANGE.0, F_RANGE.1),
+                }
+            }
+        }
+    }
+    kids.extend(params);
+    assert_eq!(kids.len(), BATCH_SIZE);
+    kids.iter().map(|k| Params::construct(*k)).collect()
+}
+
 
 
 ///plays a game SIM_TIMES times
@@ -296,49 +489,79 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
     GameResult::get_averaged(results, parameters)
 }
 
-//cargo run --release -- --train --dry
 
 
+///takes Vec<Parameters> and does generation
+fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>> {
+    let master_board = Arc::new(Board::new_board()?);
+    let progress = Arc::new(Mutex::new(0));
+    let display_thread = DisplayThread::start(Arc::clone(&progress));
+    let (tx, rx) = mpsc::channel();
 
-//gen random starting values between -1 and 1
-//game
-//take top 10%
-//select random pairs and create children
-//30% averaged, 30% random point between two params, 30% swap random amount of values between the two, 10% original chosen
-//mutate X% within MUTATE_CHANCE_RANGE of them by MUTATE_SEVERITY_RANGE in POS_NEG_FLAG direction
-//
-//maybe have "master list" of the top 5% of every generation then average that to get a master piece?
+    let pool = ThreadPool::new(POOL_SIZE);
+    for child in generation {
+        let board_ref = Arc::clone(&master_board);
+        let progress = Arc::clone(&progress);
+        let tx = tx.clone();
+        pool.execute(move || check!(tx.send(play_game(board_ref, child, progress))));
+    }
+    pool.join();
 
-
-
-
-//issue: maxing out move counter with insanely low score by only going after single pieces
-//solutions:
-//  maybe have the limit be levels instead of turns? that way it avoids level spammers
-//  bring back some version of the score/level thing
-
-//measuring off purely score with max move timeout causes level spammer issue
-//GENERATION COMPLETED IN 00h06m35s    |    2.53g/s    |    117p/s    |    score variation: 994856
-//RANK |  SCORE  | LEVEL | PLACED |  SPEED | PARAMS
-//   1 |  995780 |  399  |  10001 | 222p/s | 0 : 0.873 : 0.581 : 0.134 : 0.324 : 0.671 : 0.901 : 4 : 0.607
-//   2 |  957420 |  399  |  10001 | 175p/s | 1 : 0.283 : 0.254 : 0.127 : 0.571 : 0.227 : 0.889 : 0 : 0.930
-//   3 |  920360 |  267  |   6731 | 214p/s | 2 : 0.384 : 0.071 : 0.647 : 0.939 : 0.480 : 0.983 : 2 : 0.511
-//   4 |  893260 |  399  |  10001 | 142p/s | 0 : 0.956 : 0.860 : 0.130 : 0.616 : 0.306 : 0.454 : 3 : 0.784
-//   5 |  878680 |  399  |  10001 | 192p/s | 4 : 0.075 : 0.547 : 0.139 : 0.747 : 0.211 : 0.412 : 1 : 0.222
+    let mut results = rx.iter().take(BATCH_SIZE).collect::<Vec<GameResult>>();
+    display_thread.stop()?;
+    results.sort_by(|a, b| b.score.cmp(&a.score));
+    Ok(results)
+}
 
 
-//50 level time out causes gameover to not be as penalized
-//GENERATION COMPLETED IN 00h05m09s    |    3.24g/s    |    132p/s    |    score variation: 273564
-//RANK |  SCORE  | LEVEL | PLACED |  SPEED | PARAMS
-//   1 |  274290 |   22  |    605 | 261p/s | 3 : 0.542 : 0.267 : 0.498 : 0.184 : 0.159 : 0.914 : 3 : 0.489
-//   2 |  171326 |   38  |    996 | 246p/s | 3 : 0.162 : 0.867 : 0.122 : 0.806 : 0.306 : 0.898 : 4 : 0.195
-//   3 |  163692 |   50  |   1267 | 151p/s | 0 : 0.434 : 0.924 : 0.243 : 0.970 : 0.081 : 0.703 : 4 : 0.122
-//   4 |  152206 |   48  |   1236 | 158p/s | 1 : 0.569 : 0.583 : 0.692 : 0.033 : 0.406 : 0.928 : 3 : 0.035
-//   5 |  148418 |   11  |    326 | 215p/s | 3 : 0.912 : 0.669 : 0.296 : 0.893 : 0.105 : 0.945 : 2 : 0.561
+///does the actual training
+pub fn train() -> DynResult<()> {
+    let (mut gen, mut generation) = match check!(get_progress()) {
+        Some((gen, results)) => {
+            println!("RESUMING SPECIES FROM GENERATION {}", gen);
+            (gen, breed_next_gen(&results))            
+        },
+        None => {
+            println!("STARTING NEW SPECIES");
+            (0, random_generation())
+        },
+    };
+    let mut best_results = check!(get_best_results());
+    let total_start = Instant::now();
+    loop {
+        gen+=1;
+        println!("STARTING GENERATION {}", gen);
+        let start = Instant::now();
+        let results = check!(do_generation(generation));
+        display_gen_info(total_start, start, gen-1, &results);
+        //update and log best results
+        best_results.extend_from_slice(&results[0..{if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}}]);
+        best_results.sort_by(|a, b| b.score.cmp(&a.score));
+        if best_results.len() > 10 {best_results.drain(10..);}
+        clean!("best.log");
+        for res in &best_results {log!(res, "best.log");}
+        //get and log breeders
+        let breeders = &results[0..(BATCH_SIZE as f32*BREEDER_PERCENT) as usize];
+        clean!("species.log");
+        log!(gen, "species.log");
+        for res in breeders {log!(res, "species.log");}
+        //breed
+        generation = breed_next_gen(breeders);
+        //generation logic
+        if gen >= GENERATIONS && GENERATIONS!=0 {break}
+    }
+    let total_elapsed = Instant::now()-total_start;
+    println!("{} generations completed in {}", GENERATIONS, format_time(total_elapsed.as_secs(), "dhms"));
+    println!("Average of 1 generation every {}", format_time((total_elapsed/GENERATIONS as u32).as_secs(),"hms"));
 
-//i think having a 100 level timeout and rewarding based off score will work now that input is limited
-//now i just need to optimize and impl the actual evolutionary alg
+    println!("BEST RESULTS");
+    GameResult::print_header();
+    let disp_num = {if GENERATIONS >= 10 {10} else {GENERATIONS}};
+    for i in 0..disp_num {println!("  {:>2} |{}", i+1, best_results[i])}
+    Ok(())
+}
 
+//cargo run --release -- --train
 
 
 //10x10x100
@@ -365,37 +588,26 @@ fn play_game(board: Arc<Board>, parameters: ai::AiParameters, progress: Arc<Mute
 //CHANGING BENCHMARK TO 25X10X200                                                           00h01m50s       |    45.45g/s    |    307    |    score variation: 278325
 //changed nothing???                                                                        00h01m26s       |    58.14g/s    |    243    |    score variation: 255895
 
-//850~ placed per game
-//5 moves~ per place + drop
-//4250 moves ver game
-//update after each move
-
 
 
 //TO OPTIMIZE
 //benchmark AI functions
-//make lines cleared parameter like before instead of just score
+//change pieces to vec<&bool> then shuffle references to rotate. avoids the clone required during rotation
 
 
 
-
-
-
-
-
-
-
-// 200 generations completed in 23628.6997585s
-// Average of 1 generation every 118.143498792s
+//50x10x200x100 max lvl 20 breed params 0.10 0.30 0.30 2 0.30 00.3              U0..5 F0.0..1.0
+// 100 generations completed in 00d07h21m23s
+// Average of 1 generation every 00h04m24s
 // BEST RESULTS
 // RANK |  SCORE  | LEVEL | PLACED | PARAMS
-//    1 |  113296 |   35  |    909 | 0.000 : 0.912 : 0.038 : 0.589 : 0.021 : 0.838 : 4 : 0.527
-//    2 |  101068 |   43  |   1103 | 0.417 : 0.338 : 0.602 : 0.212 : 0.122 : 0.834 : 2 : 0.957
-//    3 |   98857 |   41  |   1052 | 0.491 : 0.655 : 0.285 : 0.320 : 0.036 : 0.557 : 1 : 0.216
-//    4 |   96783 |   41  |   1054 | 0.784 : 0.371 : 0.350 : 0.636 : 0.162 : 0.828 : 0 : 0.280
-//    5 |   95972 |   36  |    927 | 0.576 : 0.432 : 0.039 : 0.447 : 0.378 : 0.889 : 0 : 0.599
-//    6 |   94508 |   40  |   1037 | 0.519 : 0.498 : 0.086 : 0.272 : 0.061 : 0.272 : 1 : 0.816
-//    7 |   94384 |   42  |   1067 | 0.265 : 0.639 : 0.117 : 0.822 : 0.639 : 0.944 : 0 : 0.026
-//    8 |   94019 |   37  |    970 | 0.714 : 0.561 : 0.216 : 0.836 : 0.374 : 0.745 : 2 : 0.129
-//    9 |   93875 |   36  |    941 | 0.881 : 0.757 : 0.379 : 0.511 : 0.505 : 0.753 : 2 : 0.086
-//   10 |   93362 |   41  |   1049 | 0.559 : 0.094 : 0.069 : 0.295 : 0.573 : 0.694 : 1 : 0.546
+//    1 |  513214 |   18  |    461 | 2 : 0.919 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.392
+//    2 |  503686 |   19  |    497 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.962 : 0 : 0.436
+//    3 |  502776 |   18  |    482 | 2 : 0.923 : 0.006 : 0.572 : 0.019 : 0.143 : 0.012 : 0.986 : 0 : 0.417
+//    4 |  499429 |   19  |    496 | 2 : 0.923 : 0.006 : 0.572 : 0.052 : 0.143 : 0.012 : 0.983 : 0 : 0.418
+//    5 |  496683 |   19  |    492 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.461
+//    6 |  495158 |   19  |    495 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.461
+//    7 |  493801 |   19  |    490 | 2 : 0.924 : 0.006 : 0.604 : 0.053 : 0.141 : 0.012 : 0.995 : 0 : 0.503
+//    8 |  492266 |   19  |    490 | 2 : 0.924 : 0.006 : 0.571 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
+//    9 |  492208 |   19  |    493 | 2 : 0.906 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
+//   10 |  491048 |   19  |    498 | 2 : 0.923 : 0.006 : 0.572 : 0.053 : 0.143 : 0.012 : 0.981 : 0 : 0.428

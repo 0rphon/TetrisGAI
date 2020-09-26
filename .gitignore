@@ -1,6 +1,4 @@
 /target
-highscore
 *.log
-board.aseprite
-tetris/
+*.aseprite
 .vscode

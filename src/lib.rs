@@ -12,22 +12,40 @@ use engine;
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
-pub fn run(train: bool, dry: bool) {
+pub fn run(train: bool) {
     if train {
-        check!(train::train(dry));
+        check!(train::train());
         return
     }
 
+    //UNTRAINED 3 : 0.500 : 0.500 : 0.250 : 0.750 : 0.000 : 0.500 : 3.500 : 2 : 0.750
+    //let parameters = ai::AiParameters {
+    //    min_lines_to_clear:             3,
+    //    lines_cleared_importance:       0.500,
+    //    points_scored_importance:       0.500,
+    //    piece_depth_importance:         0.250,
+    //    max_height_importance:          0.750,
+    //    avg_height_importance:          0.000,
+    //    height_variation_importance:    0.500,
+    //    current_holes_importance:       3.500,
+    //    max_pillar_height:              2,
+    //    current_pillars_importance:     0.750,
+    //};
+    
+    //TRAINED   2 : 0.919 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.392
     let parameters = ai::AiParameters {
-        points_scored_importance:       0.50,
-        piece_depth_importance:         0.25,
-        max_height_importance:          0.75,
-        avg_height_importance:          0.0,
-        height_variation_importance:    0.5,
-        current_holes_importance:       3.5,
-        max_pillar_height:              2,
-        current_pillars_importance:     0.75,
+        min_lines_to_clear:             2,
+        lines_cleared_importance:       0.919,
+        points_scored_importance:       0.006,
+        piece_depth_importance:         0.572,
+        max_height_importance:          0.049,
+        avg_height_importance:          0.143,
+        height_variation_importance:    0.012,
+        current_holes_importance:       0.995,
+        max_pillar_height:              0,
+        current_pillars_importance:     0.392,
     };
+
     let mut board = check!(Board::new_board());
     let mut ai_radio = None;
 

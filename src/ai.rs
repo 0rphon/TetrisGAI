@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex, mpsc, PoisonError, MutexGuard};
 #[derive(Clone)]
 pub struct AiParameters {
     //positives
+    pub min_lines_to_clear: usize,
+    pub lines_cleared_importance: f32,
     pub points_scored_importance: f32,
     pub piece_depth_importance: f32,
     //negatives
@@ -24,7 +26,9 @@ pub struct AiParameters {
 impl fmt::Display for AiParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,
-            "{:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {} : {:.03}",
+            "{} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {} : {:.03}",
+            self.min_lines_to_clear,
+            self.lines_cleared_importance,
             self.points_scored_importance,
             self.piece_depth_importance,
             self.max_height_importance,
@@ -99,8 +103,11 @@ impl MoveData {
     /// calculates the move score. the higher the score the better
     /// also calcs the next board
     fn calc_board(&mut self, parameters: &AiParameters) {
+        let (scored, cleared) = self.do_clear();
+        //gets how many lines cleared adjusted for min_lines_to_clear importance
+        let lines_cleared    = (cleared*parameters.lines_cleared_importance as f32)*{if cleared >= parameters.min_lines_to_clear as f32 {1.0} else {-1.0}};
         //updates board and gets points scored
-        let points_scored    = self.do_clear()*parameters.points_scored_importance;
+        let points_scored    = scored*parameters.points_scored_importance;
         //gets how far down the piece was placed
         let piece_depth      = self.location.1 as f32*parameters.piece_depth_importance;                                           //y location should always be positive
         //gets heights of every column
@@ -116,8 +123,8 @@ impl MoveData {
         //how many spots where empty spaces surrounded by filled spaces on either side exist (over the set max allowed pillar height)
         let current_pillars  = self.calc_pillars(parameters.max_pillar_height)*parameters.current_pillars_importance;
 
-        self.debug_scores = vec!(points_scored, piece_depth, max_height, avg_height, height_variation, current_holes, current_pillars);
-        self.value = points_scored+piece_depth-max_height-avg_height-height_variation-current_holes-current_pillars;
+        self.debug_scores = vec!(lines_cleared, points_scored, piece_depth, max_height, avg_height, height_variation, current_holes, current_pillars);
+        self.value = lines_cleared+points_scored+piece_depth-max_height-avg_height-height_variation-current_holes-current_pillars;
     }
 
     /// returns a list of all column heights.
@@ -183,7 +190,7 @@ impl MoveData {
     //TODO if need be, i could make this return the exact rows cleared so AI could go after higher rows?
     //TODO update its benchmark so it actually clears rows while benching
     ///clears rows, adds new empty rows, and returns points scored
-    fn do_clear(&mut self) -> f32 {
+    fn do_clear(&mut self) -> (f32, f32) {
         let mut cleared = Vec::new();
         for y in 0..BOARD_HEIGHT {
             let start_range = y*BOARD_WIDTH;
@@ -201,10 +208,13 @@ impl MoveData {
             4 => 1200,
             _ => 3600
         };
-        cleared.iter().map(|y|modifier*(y+1)).sum::<usize>() as f32
+        (
+            cleared.iter().map(|y|modifier*(y+1)).sum::<usize>() as f32,
+            cleared.len() as f32
+        )
     }
 
-    fn gen_input(&self, board: &StrippedBoard) -> Vec<Move>{
+    fn gen_input(&self, board: &StrippedBoard, log_flag: bool) -> Vec<Move>{
         let mut moves = Vec::new();
         let piece = {
             if self.is_held {
@@ -230,36 +240,34 @@ impl MoveData {
             for _ in distance..0 {moves.push(Move::Left)}
         }
         moves.push(Move::Drop);
-        ////LOGGING##################################################################################################
-        //log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.value), "ai.log");   //#
-        //let mut scores = String::new();                                                                         //#
-        //for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
-        //log!(scores, "ai.log");                                                                                 //#
-        //for row in self.board.data.chunks(BOARD_WIDTH) {                                                   //#
-        //    let mut r = String::new();                                                                          //#
-        //    for column in row {                                                                                 //#
-        //        if *column {                                                                                    //#
-        //            r.push_str("[X]")                                                                           //#
-        //        } else {r.push_str("[ ]")}                                                                      //#
-        //    }                                                                                                   //#
-        //    log!(r, "ai.log");                                                                                  //#
-        //}                                                                                                       //#
-        ////#########################################################################################################
-        //LOGGING######################################################################################
-        //log!(format!("current: {:?}", piece.location), "ai.log");                                   //#
-        //for row in piece.data.data.chunks(piece.data.width) {                                       //#
-        //    let mut r = String::new();                                                              //#
-        //    for column in row {                                                                     //#
-        //        if *column {                                                                        //#
-        //            r.push_str("[X]")                                                               //#
-        //        } else {r.push_str("[ ]")}                                                          //#
-        //    }                                                                                       //#
-        //    log!(r, "ai.log");                                                                      //#
-        //}                                                                                           //#
-        ////#############################################################################################
-        ////LOGGING##########################################################
-        //log!(format!("Moves {:?}\n", moves), "ai.log");                 //#
-        ////#################################################################
+        if log_flag {
+            //LOGGING##################################################################################################
+            log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.value), "ai.log");   //#
+            let mut scores = String::new();                                                                         //#
+            for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
+            log!(scores, "ai.log");                                                                                 //#
+            for row in self.board.chunks(BOARD_WIDTH) {                                                             //#
+                let mut r = String::new();                                                                          //#
+                for column in row {                                                                                 //#
+                    if *column {                                                                                    //#
+                        r.push_str("[X]")                                                                           //#
+                    } else {r.push_str("[ ]")}                                                                      //#
+                }                                                                                                   //#
+                log!(r, "ai.log");                                                                                  //#
+            }                                                                                                       //#
+            log!(format!("current: {:?}", piece.location), "ai.log");                                               //#
+            for row in piece.data.chunks(piece.dim) {                                                               //#
+                let mut r = String::new();                                                                          //#
+                for column in row {                                                                                 //#
+                    if *column {                                                                                    //#
+                        r.push_str("[X]")                                                                           //#
+                    } else {r.push_str("[ ]")}                                                                      //#
+                }                                                                                                   //#
+                log!(r, "ai.log");                                                                                  //#
+            }                                                                                                       //#
+            log!(format!("Moves {:?}\n", moves), "ai.log");                                                         //#
+            //#########################################################################################################
+        }
         moves
     }
 }
@@ -339,12 +347,12 @@ fn get_possible_moves(board: &StrippedBoard, parameters: &AiParameters) -> Vec<M
 
 
 ///takes board. gets all possible moves. finds best move. generates input
-fn get_input_move(board: StrippedBoard, parameters: &AiParameters) -> (Vec<Move>, Option<Vec<bool>>) {
+fn get_input_move(board: StrippedBoard, parameters: &AiParameters, log_flag: bool) -> (Vec<Move>, Option<Vec<bool>>) {
     let mut possible_moves = get_possible_moves(&board, parameters);
     if !possible_moves.is_empty() {
         possible_moves.sort_by(|a,b| b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal));     //IF NAN DEFAULTS TO EQUAL
         let chosen_move = possible_moves.remove(0);
-        (chosen_move.gen_input(&board), Some(chosen_move.board))
+        (chosen_move.gen_input(&board, log_flag), Some(chosen_move.board))
     } else {(vec!(Move::Restart), None)}
 }
 
@@ -453,7 +461,7 @@ fn ai_loop(radio: AiRadio, parameters: AiParameters, log_flag: bool) {
                 }
                 last_board = new_board.data.clone();
                 if !new_board.gameover {
-                    let result = get_input_move(new_board, &parameters);
+                    let result = get_input_move(new_board, &parameters, log_flag);
                     check!(radio.set_input(result.0));
                     predicted_board = result.1;
                 } else {check!(radio.set_input(vec!(Move::Restart)))}
