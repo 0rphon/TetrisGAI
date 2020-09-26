@@ -1,3 +1,4 @@
+use std::io::ErrorKind::NotFound;
 use super::game::{Board, Move};
 use super::ai;
 use dynerr::*;
@@ -5,6 +6,8 @@ use dynerr::*;
 use std::{fmt, thread};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex, mpsc};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 use rand::Rng;
 use threadpool::ThreadPool;
@@ -36,7 +39,7 @@ const POOL_SIZE: usize          = 10;   //10
 ///generation size
 const BATCH_SIZE: usize         = 200;  //200
 ///how many generations to run
-const GENERATIONS: usize        = 100;  //200
+const GENERATIONS: usize        = 0;    //200       IF 0 THEN INFINITE
 ///max level before timeout
 const MAX_LEVEL: usize          = 10;   //20
 ///how often to update screen
@@ -263,9 +266,106 @@ impl Params {
 }
 
 
+fn random_generation() -> Vec<ai::AiParameters> {
+    let mut rng = rand::thread_rng();
+    (0..BATCH_SIZE).map(|_| {
+        ai::AiParameters {
+            min_lines_to_clear:             rng.gen_range(U_RANGE.0, U_RANGE.1),
+            lines_cleared_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+            points_scored_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+            piece_depth_importance:         rng.gen_range(F_RANGE.0, F_RANGE.1),
+            max_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
+            avg_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
+            height_variation_importance:    rng.gen_range(F_RANGE.0, F_RANGE.1),
+            current_holes_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+            max_pillar_height:              rng.gen_range(U_RANGE.0, U_RANGE.1),
+            current_pillars_importance:     rng.gen_range(F_RANGE.0, F_RANGE.1),
+        }
+    }).collect::<Vec<ai::AiParameters>>()
+}
 
-fn breed_next_gen(last_gen: Vec<GameResult>) -> Vec<ai::AiParameters> {
-    let breeders = &last_gen[0..(BATCH_SIZE as f32*BREEDER_PERCENT) as usize];
+
+
+//attempts to get the progress of last species trained
+fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
+    match File::open("species.log") {
+        Ok(file) => {
+            let mut prog = BufReader::new(file).lines().map(|l| l.unwrap());
+            let gen = prog.next().unwrap().parse().unwrap();
+            let generation = prog.map(|line| {
+                let mut fields = line.split('|');
+                GameResult {
+                    score: fields.next().unwrap().replace(" ","").parse().unwrap(),
+                    level: fields.next().unwrap().replace(" ","").parse().unwrap(),
+                    placed: fields.next().unwrap().replace(" ","").parse().unwrap(),
+                    parameters: {
+                        let mut params = fields.next().unwrap().split(':');
+                        Some(
+                            Params::construct ([
+                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                            ])
+                        )
+                    }
+                }
+            }).collect();
+            Ok(Some((gen, generation)))
+        },
+        Err(e) if e.kind() == NotFound => {Ok(None)},
+        Err(e) => dynerr!(e),
+    }
+}
+
+
+//gets the best results, or empty vec if best.log doesnt exist
+fn get_best_results() -> DynResult<Vec<GameResult>> {
+    match File::open("best.log") {
+        Ok(file) => {
+            let prog = BufReader::new(file).lines().map(|l| l.unwrap());
+            let best_results = prog.map(|line| {
+                let mut fields = line.split('|');
+                GameResult {
+                    score: fields.next().unwrap().replace(" ","").parse().unwrap(),
+                    level: fields.next().unwrap().replace(" ","").parse().unwrap(),
+                    placed: fields.next().unwrap().replace(" ","").parse().unwrap(),
+                    parameters: {
+                        let mut params = fields.next().unwrap().split(':');
+                        Some(
+                            Params::construct ([
+                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::U(params.next().unwrap().replace(" ","").parse().unwrap()),
+                                    Params::F(params.next().unwrap().replace(" ","").parse().unwrap()),
+                            ])
+                        )
+                    }
+                }
+            }).collect();
+            Ok(best_results)
+        }
+        Err(e) if e.kind() == NotFound => {Ok(Vec::new())},
+        Err(e) => dynerr!(e),
+    }
+}
+
+
+//takes breeders and breeds next generation
+fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
+    assert_eq!(breeders.len(), (BATCH_SIZE as f32*BREEDER_PERCENT) as usize);
     let mut rng = rand::thread_rng();
     let mut kids = Vec::with_capacity(BATCH_SIZE);
     let params = breeders.iter().map(|b|
@@ -420,58 +520,41 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
 }
 
 
-
 ///does the actual training
-pub fn train(dry_run: bool) -> DynResult<()> {
-    if dry_run {println!("Starting Dry Run")}
-    else {println!("Starting Live Run")}
-    let mut best_results = Vec::new();
-    let total_start = Instant::now();
-    let mut generation = {
-        if dry_run {
-            (0..BATCH_SIZE).map(|_| {
-                ai::AiParameters {
-                    min_lines_to_clear:             3,
-                    lines_cleared_importance:       0.50,
-                    points_scored_importance:       0.50,
-                    piece_depth_importance:         0.25,
-                    max_height_importance:          0.75,
-                    avg_height_importance:          0.0,
-                    height_variation_importance:    0.5,
-                    current_holes_importance:       3.5,
-                    max_pillar_height:              2,
-                    current_pillars_importance:     0.75,
-                }
-            }).collect::<Vec<ai::AiParameters>>()
-        } else {
-            let mut rng = rand::thread_rng();
-            (0..BATCH_SIZE).map(|_| {
-                ai::AiParameters {
-                    min_lines_to_clear:             rng.gen_range(U_RANGE.0, U_RANGE.1),
-                    lines_cleared_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    points_scored_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    piece_depth_importance:         rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    max_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    avg_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    height_variation_importance:    rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    current_holes_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
-                    max_pillar_height:              rng.gen_range(U_RANGE.0, U_RANGE.1),
-                    current_pillars_importance:     rng.gen_range(F_RANGE.0, F_RANGE.1),
-                }
-            }).collect::<Vec<ai::AiParameters>>()
-        }
+pub fn train() -> DynResult<()> {
+    let (mut gen, mut generation) = match check!(get_progress()) {
+        Some((gen, results)) => {
+            println!("RESUMING SPECIES FROM GENERATION {}", gen);
+            (gen, breed_next_gen(&results))            
+        },
+        None => {
+            println!("STARTING NEW SPECIES");
+            (0, random_generation())
+        },
     };
-    for gen in 0..GENERATIONS {
-        println!("STARTING GENERATION {}", gen+1);
+    let mut best_results = check!(get_best_results());
+    let total_start = Instant::now();
+    loop {
+        gen+=1;
+        println!("STARTING GENERATION {}", gen);
         let start = Instant::now();
         let results = check!(do_generation(generation));
-        display_gen_info(total_start, start, gen, &results);
+        display_gen_info(total_start, start, gen-1, &results);
+        //update and log best results
         best_results.extend_from_slice(&results[0..{if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}}]);
         best_results.sort_by(|a, b| b.score.cmp(&a.score));
         if best_results.len() > 10 {best_results.drain(10..);}
-        clean!("train.log");
-        for res in &best_results {log!(format!("{}", res), "train.log");}
-        generation = breed_next_gen(results);
+        clean!("best.log");
+        for res in &best_results {log!(res, "best.log");}
+        //get and log breeders
+        let breeders = &results[0..(BATCH_SIZE as f32*BREEDER_PERCENT) as usize];
+        clean!("species.log");
+        log!(gen, "species.log");
+        for res in breeders {log!(res, "species.log");}
+        //breed
+        generation = breed_next_gen(breeders);
+        //generation logic
+        if gen >= GENERATIONS && GENERATIONS!=0 {break}
     }
     let total_elapsed = Instant::now()-total_start;
     println!("{} generations completed in {}", GENERATIONS, format_time(total_elapsed.as_secs(), "dhms"));
@@ -484,7 +567,7 @@ pub fn train(dry_run: bool) -> DynResult<()> {
     Ok(())
 }
 
-//cargo run --release -- --train --dry
+//cargo run --release -- --train
 
 
 //10x10x100
@@ -511,15 +594,11 @@ pub fn train(dry_run: bool) -> DynResult<()> {
 //CHANGING BENCHMARK TO 25X10X200                                                           00h01m50s       |    45.45g/s    |    307    |    score variation: 278325
 //changed nothing???                                                                        00h01m26s       |    58.14g/s    |    243    |    score variation: 255895
 
-//850~ placed per game
-//5 moves~ per place + drop
-//4250 moves ver game
-//update after each move
-
 
 
 //TO OPTIMIZE
 //benchmark AI functions
+//change pieces to vec<&bool> then shuffle references to rotate. avoids the clone required during rotation
 
 
 
@@ -538,21 +617,3 @@ pub fn train(dry_run: bool) -> DynResult<()> {
 //    8 |  492266 |   19  |    490 | 2 : 0.924 : 0.006 : 0.571 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
 //    9 |  492208 |   19  |    493 | 2 : 0.906 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
 //   10 |  491048 |   19  |    498 | 2 : 0.923 : 0.006 : 0.572 : 0.053 : 0.143 : 0.012 : 0.981 : 0 : 0.428
-
-
-//SLOWDOWN LIVE RUN
-//00h03m45s 44.44g/s    1ST GEN
-//00h04m51s 34.36g/s    2ND GEN SLOWDOWN
-//00h04m50s 34.48g/s
-//DRY RUN DOESNT HAVE IT
-//00h03m28s 48.08g/s
-//00h03m23s 49.26g/s
-//00h03m30s 47.62g/s
-//is it because they get better after breeding leading to longer average game time?
-//im lowering level timeout to 10
-//LIVE RUN MAX LVL 10
-//00h02m47s 59.88g/s
-//00h02m59s 55.87g/s
-//00h02m52s 58.14g/s
-//00h02m41s 62.11g/s
-//okay its 100% the average skill increase causing lag

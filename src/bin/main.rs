@@ -6,9 +6,5 @@ fn main() {
         Some(arg) if arg == "--train" => true,
         _  => false,
     };
-    let dry = match args().nth(2) {
-        Some(arg) if arg == "--dry" => true,
-        _  => false,
-    };
-    tetris::run(train, dry);
+    tetris::run(train);
 }

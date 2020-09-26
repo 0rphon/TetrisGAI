@@ -103,13 +103,13 @@ impl Board {
         Ok(board)
     }
 
-    ///gets the score from "highscore"
+    ///gets the score from "highscore.log"
     fn get_highscore() -> DynResult<usize> {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open("highscore")?;
+            .open("highscore.log")?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         if contents.len() == 0 {Ok(0)}
@@ -287,7 +287,7 @@ impl Board {
             let mut file = OpenOptions::new()
                 .write(true)
                 .create(true)
-                .open("highscore")?;
+                .open("highscore.log")?;
             file.write(format!("{}",self.highscore).as_bytes())?;
         }
         Ok(())
