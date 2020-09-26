@@ -30,7 +30,7 @@ use threadpool::ThreadPool;
 //100x200 8:38 var 38744
 
 ///times to run each AIs game
-const SIM_TIMES: usize          = 50;   //25
+const SIM_TIMES: usize          = 50;   //50
 ///how many game sims can be running at once
 const POOL_SIZE: usize          = 10;   //10
 ///generation size
@@ -38,14 +38,18 @@ const BATCH_SIZE: usize         = 200;  //200
 ///how many generations to run
 const GENERATIONS: usize        = 100;  //200
 ///max level before timeout
-const MAX_LEVEL: usize          = 20;
+const MAX_LEVEL: usize          = 10;   //20
 ///how often to update screen
 const DISPLAY_INTERVAL: usize   = 13;
 
+const U_RANGE: (usize, usize)   = (0, 5);       //max 4
+const F_RANGE: (f32, f32)       = (0.0, 1.0);
+
 const BREEDER_PERCENT: f32      = 0.10; //should all add up to 100%
 const PERCENT_SPLIT: f32        = 0.00;
-const PERCENT_SWAP: f32         = 0.90;
+const PERCENT_SWAP: f32         = 0.80;
 const PERCENT_AVG: f32          = 0.00;
+const PERCENT_RAND: f32         = 0.10;
 
 const SWAP_CHANCE: f32          = 0.25; //% of chromosomes will swap
 const MUTATION_CHANCE: f32      = 0.05; //% of chromosomes will mutate
@@ -267,7 +271,7 @@ fn breed_next_gen(last_gen: Vec<GameResult>) -> Vec<ai::AiParameters> {
     let params = breeders.iter().map(|b|
         Params::get(&b.parameters.as_ref().unwrap())
     ).collect::<Vec<[Params;10]>>();
-
+    //closure to get random pair
     let get_couple = |mut rng: rand::prelude::ThreadRng| {
         let couple = {
             let (mut x, mut y) = (rng.gen_range(0,params.len()), rng.gen_range(0,params.len()));
@@ -281,7 +285,6 @@ fn breed_next_gen(last_gen: Vec<GameResult>) -> Vec<ai::AiParameters> {
         let fema = &params[couple.1];
         (male, fema)
     };
-
     //left and right half's
     for _ in 0..(BATCH_SIZE as f32*PERCENT_SPLIT) as usize {
         let (male, fema) = get_couple(rng);
@@ -291,18 +294,16 @@ fn breed_next_gen(last_gen: Vec<GameResult>) -> Vec<ai::AiParameters> {
         for y in divide..kid.len() {kid[y] = fema[y]}
         kids.push(kid);
     }
-
     //swap fields
     for _ in 0..(BATCH_SIZE as f32*PERCENT_SWAP) as usize {
         let (male, fema) = get_couple(rng);
         let mut kid = [Params::U(0);10];
         for x in 0..kid.len() {
-            if rng.gen_range(0.0,1.0) <= SWAP_CHANCE {kid[x] = fema[x]}
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= SWAP_CHANCE {kid[x] = fema[x]}
             else {kid[x] = male[x]}
         }
         kids.push(kid);
     }
-
     //averages
     for _ in 0..(BATCH_SIZE as f32*PERCENT_AVG) as usize {
         let (male, fema) = get_couple(rng);
@@ -321,14 +322,29 @@ fn breed_next_gen(last_gen: Vec<GameResult>) -> Vec<ai::AiParameters> {
         }
         kids.push(kid);
     }
-
+    //generate new randoms
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_RAND) as usize {
+        let kid = [
+            Params::U(rng.gen_range(U_RANGE.0, U_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+            Params::U(rng.gen_range(U_RANGE.0, U_RANGE.1)),
+            Params::F(rng.gen_range(F_RANGE.0, F_RANGE.1)),
+        ];
+        kids.push(kid);
+    }
     //mutate
     for cronenberg in &mut kids {
         for gene in cronenberg {
-            if rng.gen_range(0.0,1.0) <= MUTATION_CHANCE {
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= MUTATION_CHANCE {
                 match gene {
-                    Params::U(u) => *u = rng.gen_range(0,5),
-                    Params::F(f) => *f = rng.gen_range(0.0,1.0),
+                    Params::U(u) => *u = rng.gen_range(U_RANGE.0, U_RANGE.1),
+                    Params::F(f) => *f = rng.gen_range(F_RANGE.0, F_RANGE.1),
                 }
             }
         }
@@ -431,16 +447,16 @@ pub fn train(dry_run: bool) -> DynResult<()> {
             let mut rng = rand::thread_rng();
             (0..BATCH_SIZE).map(|_| {
                 ai::AiParameters {
-                    min_lines_to_clear:             rng.gen_range(0,5),
-                    lines_cleared_importance:       rng.gen_range(0.0,1.0),
-                    points_scored_importance:       rng.gen_range(0.0,1.0),
-                    piece_depth_importance:         rng.gen_range(0.0,1.0),
-                    max_height_importance:          rng.gen_range(0.0,1.0),
-                    avg_height_importance:          rng.gen_range(0.0,1.0),
-                    height_variation_importance:    rng.gen_range(0.0,1.0),
-                    current_holes_importance:       rng.gen_range(0.0,1.0),
-                    max_pillar_height:              rng.gen_range(0,5),
-                    current_pillars_importance:     rng.gen_range(0.0,1.0),
+                    min_lines_to_clear:             rng.gen_range(U_RANGE.0, U_RANGE.1),
+                    lines_cleared_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    points_scored_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    piece_depth_importance:         rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    max_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    avg_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    height_variation_importance:    rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    current_holes_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
+                    max_pillar_height:              rng.gen_range(U_RANGE.0, U_RANGE.1),
+                    current_pillars_importance:     rng.gen_range(F_RANGE.0, F_RANGE.1),
                 }
             }).collect::<Vec<ai::AiParameters>>()
         }
@@ -469,48 +485,6 @@ pub fn train(dry_run: bool) -> DynResult<()> {
 }
 
 //cargo run --release -- --train --dry
-
-
-
-//gen random starting values between -1 and 1
-//game
-//take top 10%
-//select random pairs and create children
-//30% averaged, 30% random point between two params, 30% swap random amount of values between the two, 10% original chosen
-//mutate X% within MUTATE_CHANCE_RANGE of them by MUTATE_SEVERITY_RANGE in POS_NEG_FLAG direction
-//
-//maybe have "master list" of the top 5% of every generation then average that to get a master piece?
-
-
-
-
-//issue: maxing out move counter with insanely low score by only going after single pieces
-//solutions:
-//  maybe have the limit be levels instead of turns? that way it avoids level spammers
-//  bring back some version of the score/level thing
-
-//measuring off purely score with max move timeout causes level spammer issue
-//GENERATION COMPLETED IN 00h06m35s    |    2.53g/s    |    117p/s    |    score variation: 994856
-//RANK |  SCORE  | LEVEL | PLACED |  SPEED | PARAMS
-//   1 |  995780 |  399  |  10001 | 222p/s | 0 : 0.873 : 0.581 : 0.134 : 0.324 : 0.671 : 0.901 : 4 : 0.607
-//   2 |  957420 |  399  |  10001 | 175p/s | 1 : 0.283 : 0.254 : 0.127 : 0.571 : 0.227 : 0.889 : 0 : 0.930
-//   3 |  920360 |  267  |   6731 | 214p/s | 2 : 0.384 : 0.071 : 0.647 : 0.939 : 0.480 : 0.983 : 2 : 0.511
-//   4 |  893260 |  399  |  10001 | 142p/s | 0 : 0.956 : 0.860 : 0.130 : 0.616 : 0.306 : 0.454 : 3 : 0.784
-//   5 |  878680 |  399  |  10001 | 192p/s | 4 : 0.075 : 0.547 : 0.139 : 0.747 : 0.211 : 0.412 : 1 : 0.222
-
-
-//50 level time out causes gameover to not be as penalized
-//GENERATION COMPLETED IN 00h05m09s    |    3.24g/s    |    132p/s    |    score variation: 273564
-//RANK |  SCORE  | LEVEL | PLACED |  SPEED | PARAMS
-//   1 |  274290 |   22  |    605 | 261p/s | 3 : 0.542 : 0.267 : 0.498 : 0.184 : 0.159 : 0.914 : 3 : 0.489
-//   2 |  171326 |   38  |    996 | 246p/s | 3 : 0.162 : 0.867 : 0.122 : 0.806 : 0.306 : 0.898 : 4 : 0.195
-//   3 |  163692 |   50  |   1267 | 151p/s | 0 : 0.434 : 0.924 : 0.243 : 0.970 : 0.081 : 0.703 : 4 : 0.122
-//   4 |  152206 |   48  |   1236 | 158p/s | 1 : 0.569 : 0.583 : 0.692 : 0.033 : 0.406 : 0.928 : 3 : 0.035
-//   5 |  148418 |   11  |    326 | 215p/s | 3 : 0.912 : 0.669 : 0.296 : 0.893 : 0.105 : 0.945 : 2 : 0.561
-
-//i think having a 100 level timeout and rewarding based off score will work now that input is limited
-//now i just need to optimize and impl the actual evolutionary alg
-
 
 
 //10x10x100
@@ -546,11 +520,10 @@ pub fn train(dry_run: bool) -> DynResult<()> {
 
 //TO OPTIMIZE
 //benchmark AI functions
-//WHY IS FIRST GEN FAST AND EVERY OTHER GEN 50% SLOWER?  it has to be something about the memory layout of the breeded generation
 
 
 
-//50x10x200x100 max lvl 20 breed params 0.10 0.30 0.30 2 0.30 00.3
+//50x10x200x100 max lvl 20 breed params 0.10 0.30 0.30 2 0.30 00.3              U0..5 F0.0..1.0
 // 100 generations completed in 00d07h21m23s
 // Average of 1 generation every 00h04m24s
 // BEST RESULTS
@@ -565,3 +538,21 @@ pub fn train(dry_run: bool) -> DynResult<()> {
 //    8 |  492266 |   19  |    490 | 2 : 0.924 : 0.006 : 0.571 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
 //    9 |  492208 |   19  |    493 | 2 : 0.906 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
 //   10 |  491048 |   19  |    498 | 2 : 0.923 : 0.006 : 0.572 : 0.053 : 0.143 : 0.012 : 0.981 : 0 : 0.428
+
+
+//SLOWDOWN LIVE RUN
+//00h03m45s 44.44g/s    1ST GEN
+//00h04m51s 34.36g/s    2ND GEN SLOWDOWN
+//00h04m50s 34.48g/s
+//DRY RUN DOESNT HAVE IT
+//00h03m28s 48.08g/s
+//00h03m23s 49.26g/s
+//00h03m30s 47.62g/s
+//is it because they get better after breeding leading to longer average game time?
+//im lowering level timeout to 10
+//LIVE RUN MAX LVL 10
+//00h02m47s 59.88g/s
+//00h02m59s 55.87g/s
+//00h02m52s 58.14g/s
+//00h02m41s 62.11g/s
+//okay its 100% the average skill increase causing lag
