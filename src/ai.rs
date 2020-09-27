@@ -26,7 +26,7 @@ pub struct AiParameters {
 impl fmt::Display for AiParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,
-            "{} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {:.03} : {} : {:.03}",
+            "{} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {} : {:.05}",
             self.min_lines_to_clear,
             self.lines_cleared_importance,
             self.points_scored_importance,
