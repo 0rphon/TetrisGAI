@@ -37,7 +37,7 @@ pub fn run(train: bool, auto_loop: bool) {
     //693944  |    6  |    196 | 4 : 0.79000 : 0.00100 : 0.14900 : 0.05000 : 0.09200 : 0.01900 : 0.63200 : 1 : 0.06600
     //1189945 |   18  |    485 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
     let parameters = ai::AiParameters {
-        min_lines_to_clear:             4,
+        min_lines_to_clear:             4.0,
         lines_cleared_importance:       0.79000,
         points_scored_importance:       0.00100,
         piece_depth_importance:         0.33926,
@@ -45,7 +45,7 @@ pub fn run(train: bool, auto_loop: bool) {
         avg_height_importance:          0.09200,
         height_variation_importance:    0.01900,
         current_holes_importance:       0.42276,
-        max_pillar_height:              0,
+        max_pillar_height:              0.0,
         current_pillars_importance:     0.06300,
     };
 

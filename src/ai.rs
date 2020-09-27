@@ -7,10 +7,10 @@ use std::cmp::Ordering;
 use std::sync::{Arc, Mutex, mpsc, PoisonError, MutexGuard};
 
 
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct AiParameters {
     //positives
-    pub min_lines_to_clear: usize,
+    pub min_lines_to_clear: f32,
     pub lines_cleared_importance: f32,
     pub points_scored_importance: f32,
     pub piece_depth_importance: f32,
@@ -19,14 +19,14 @@ pub struct AiParameters {
     pub avg_height_importance: f32,
     pub height_variation_importance: f32,
     pub current_holes_importance: f32,
-    pub max_pillar_height: usize,
+    pub max_pillar_height: f32,
     pub current_pillars_importance: f32,
 }
 
 impl fmt::Display for AiParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,
-            "{} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {} : {:.05}",
+            "{:.01} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.05} : {:.01} : {:.05}",
             self.min_lines_to_clear,
             self.lines_cleared_importance,
             self.points_scored_importance,
@@ -38,6 +38,38 @@ impl fmt::Display for AiParameters {
             self.max_pillar_height,
             self.current_pillars_importance
         )
+    }
+}
+
+impl AiParameters {
+    pub fn construct(params: [f32;10]) -> Self {
+        Self {
+            min_lines_to_clear:             params[0],
+            lines_cleared_importance:       params[1],
+            points_scored_importance:       params[2],
+            piece_depth_importance:         params[3],
+            max_height_importance:          params[4],
+            avg_height_importance:          params[5],
+            height_variation_importance:    params[6],
+            current_holes_importance:       params[7],
+            max_pillar_height:              params[8],
+            current_pillars_importance:     params[9],
+        }
+    }
+
+    pub fn deconstruct(self) -> [f32;10] {
+        [
+            self.min_lines_to_clear,
+            self.lines_cleared_importance,
+            self.points_scored_importance,
+            self.piece_depth_importance,
+            self.max_height_importance,
+            self.avg_height_importance,
+            self.height_variation_importance,
+            self.current_holes_importance,
+            self.max_pillar_height,
+            self.current_pillars_importance,
+        ]
     }
 }
 
@@ -105,7 +137,7 @@ impl MoveData {
     fn calc_board(&mut self, parameters: &AiParameters) {
         let (scored, cleared) = self.do_clear();
         //gets how many lines cleared adjusted for min_lines_to_clear importance
-        let lines_cleared    = (cleared*parameters.lines_cleared_importance as f32)*{if cleared >= parameters.min_lines_to_clear as f32 {1.0} else {-1.0}};
+        let lines_cleared    = (cleared*parameters.lines_cleared_importance)*{if cleared >= parameters.min_lines_to_clear {1.0} else {-1.0}};
         //updates board and gets points scored
         let points_scored    = scored*parameters.points_scored_importance;
         //gets how far down the piece was placed
@@ -164,8 +196,8 @@ impl MoveData {
     }
 
     ///each additional block for pillars over 2 blocks
-    fn calc_pillars(&self, max_pillar_height: usize) -> f32 {
-        let mut pillars = 0;
+    fn calc_pillars(&self, max_pillar_height: f32) -> f32 {
+        let mut pillars = 0.0;
         for x in 0..BOARD_WIDTH {
             let mut idx = x;
             let mut pillar_height = 0;
@@ -182,9 +214,9 @@ impl MoveData {
                 }
                 idx += BOARD_WIDTH;
             }
-            if pillar_height > max_pillar_height {pillars+=pillar_height-max_pillar_height}
+            if pillar_height as f32 > max_pillar_height {pillars+=pillar_height as f32-max_pillar_height}
         }
-        pillars as f32
+        pillars
     }
 
     //TODO if need be, i could make this return the exact rows cleared so AI could go after higher rows?
