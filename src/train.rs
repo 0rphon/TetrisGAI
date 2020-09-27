@@ -52,7 +52,7 @@ const DISPLAY_INTERVAL: usize   = 13;
 const U_RANGE: (usize, usize)   = (0, 5);       //max 4
 const F_RANGE: (f32, f32)       = (0.0, 1.0);
 const U_NUDGE: usize            = 1;
-const F_NUDGE: f32              = 0.05;
+const F_NUDGE_RANGE: (f32,f32)  = (0.001, 0.05);
 
 const BREEDER_PERCENT: f32      = 0.20; //should all add up to 100% try to keep div by 5
 const PERCENT_CROSS: f32        = 0.70;
@@ -443,9 +443,10 @@ fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
                         }
                     },
                     Params::F(f) => {
+                        let f_nudge = rng.gen_range(F_NUDGE_RANGE.0, F_NUDGE_RANGE.1);
                         match rng.gen_range(0,2) {
-                            0 => *f = if *f-F_NUDGE <= 0.0 {F_RANGE.0} else {*f+F_NUDGE},
-                            _ => *f = if *f+F_NUDGE >= F_RANGE.1 {F_RANGE.1} else {*f+F_NUDGE},
+                            0 => *f = if *f-f_nudge <= 0.0 {F_RANGE.0} else {*f+f_nudge},
+                            _ => *f = if *f+f_nudge >= F_RANGE.1 {F_RANGE.1} else {*f+f_nudge},
                         }
                     },
                 }
