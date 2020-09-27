@@ -32,21 +32,22 @@ pub fn run(train: bool, auto_loop: bool) {
     //    current_pillars_importance:     0.750,
     //};
     
-    //   ???  |    ?? |    ??? | 2 : 0.919   : 0.006   : 0.572   : 0.049   : 0.143   : 0.012   : 0.995   : 0 : 0.392         3.08M   LESS EFFICIENT
-    //392860  |    8  |    227 | 2 : 0.939   : 0.004   : 0.240   : 0.002   : 0.102   : 0.024   : 0.920   : 0 : 0.200         1.11M
-    //693944  |    6  |    196 | 4 : 0.79000 : 0.00100 : 0.14900 : 0.05000 : 0.09200 : 0.01900 : 0.63200 : 1 : 0.06600
-    //1189945 |   18  |    485 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+    //   ???  |    ?? |    ??? | 2   : 0.919   : 0.006   : 0.572   : 0.049   : 0.143   : 0.012   : 0.995   : 0   : 0.392        3.08M   LESS EFFICIENT
+    //392860  |    8  |    227 | 2   : 0.939   : 0.004   : 0.240   : 0.002   : 0.102   : 0.024   : 0.920   : 0   : 0.200        1.11M
+    //693944  |    6  |    196 | 4   : 0.79000 : 0.00100 : 0.14900 : 0.05000 : 0.09200 : 0.01900 : 0.63200 : 1   : 0.06600
+    //1189945 |   18  |    485 | 4   : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0   : 0.06300
+    //1145311 |   21  |    556 | 4.0 : 0.91910 : 0.00000 : 0.56862 : 0.09960 : 0.32070 : 0.06357 : 1.00564 : 1.0 : 0.38466      2.11M lvl 30~
     let parameters = ai::AiParameters {
         min_lines_to_clear:             4.0,
-        lines_cleared_importance:       0.79000,
-        points_scored_importance:       0.00100,
-        piece_depth_importance:         0.33926,
-        max_height_importance:          0.05000,
-        avg_height_importance:          0.09200,
-        height_variation_importance:    0.01900,
-        current_holes_importance:       0.42276,
-        max_pillar_height:              0.0,
-        current_pillars_importance:     0.06300,
+        lines_cleared_importance:       0.91910,
+        points_scored_importance:       0.00000,
+        piece_depth_importance:         0.56862,
+        max_height_importance:          0.09960,
+        avg_height_importance:          0.32070,
+        height_variation_importance:    0.06357,
+        current_holes_importance:       1.00000,
+        max_pillar_height:              1.0,
+        current_pillars_importance:     0.38466,
     };
 
     let mut board = check!(Board::new_board());
