@@ -49,10 +49,14 @@ const MAX_LEVEL: usize          = 30;   //20
 ///how often to update screen
 const DISPLAY_INTERVAL: usize   = 13;
 
-const U_RANGE: (usize, usize)   = (0, 5);       //max 4
+//range that usize parameters can be between
+const U_RANGE: (usize, usize)   = (0, 5);       //max *should* be 4 (aka 5 because this is an exclusive range)
+//range that float parameters can be between
 const F_RANGE: (f32, f32)       = (0.0, 1.0);
+//how big a usize nudge is
 const U_NUDGE: usize            = 1;
-const F_NUDGE_RANGE: (f32,f32)  = (0.001, 0.05);
+//range that a float nudge can be between
+const F_NUDGE_RANGE: (f32,f32)  = (0.001, 0.03);
 
 const BREEDER_PERCENT: f32      = 0.20; //should all add up to 100% try to keep div by 5
 const PERCENT_CROSS: f32        = 0.70;
@@ -142,7 +146,7 @@ impl GameResult {
 impl fmt::Display for GameResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,
-            " {:>7} |  {:>3}  | {:>6} | {}",
+            "{:>7} |  {:>3}  | {:>6} | {}",
             self.score,
             self.level,
             self.placed,
@@ -203,7 +207,7 @@ fn display_gen_info(total_start: Instant, past_elapsed: u64, start: Instant, gen
     GameResult::print_header();
     let disp_num = {if BATCH_SIZE >= 5 {5} else {BATCH_SIZE}};
     for i in 0..disp_num {
-        println!("  {:>2} |{}", i+1, results[i]);
+        println!("  {:>2} | {}", i+1, results[i]);
     }
     println!("\n");
 }
@@ -538,7 +542,7 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
 ///saves current stats
 fn log_stats(best_results: &Vec<(usize, GameResult)>, breeders: &[GameResult], gen: usize, total_start: Instant, past_elapsed: u64) {
     clean!("best.log");
-    for res in best_results {log!(format!("{:2>} |{}",res.0, res.1), "best.log");}
+    for res in best_results {log!(format!("{:2>} | {}",res.0, res.1), "best.log");}
     clean!("species.log");
     log!(format!("{} | {}", gen, (Instant::now()-total_start).as_secs()+past_elapsed), "species.log");
     for res in breeders {log!(res, "species.log");}
@@ -588,7 +592,7 @@ pub fn train() -> DynResult<()> {
     println!("BEST RESULTS");
     GameResult::print_header();
     let disp_num = {if GENERATIONS >= 10 {10} else {GENERATIONS}};
-    for i in 0..disp_num {println!("  {:>2} | {} |{}", i+1, best_results[i].0, best_results[i].1)}
+    for i in 0..disp_num {println!("  {:>2} | {} | {}", i+1, best_results[i].0, best_results[i].1)}
     Ok(())
 }
 
@@ -672,3 +676,21 @@ pub fn train() -> DynResult<()> {
 //   582616 |    5  |    182 | 4 : 0.87685 : 0.00100 : 0.13340 : 0.05000 : 0.09200 : 0.01900 : 0.56915 : 0 : 0.11643
 //   578648 |    7  |    214 | 4 : 0.79000 : 0.00100 : 0.16135 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
 //   576082 |    6  |    196 | 4 : 0.79000 : 0.00100 : 0.21726 : 0.05000 : 0.09200 : 0.01900 : 0.62823 : 0 : 0.11643
+
+
+
+
+
+
+
+
+// 15 | 1074237 |   17  |    462 | 5 : 1.00000 : 0.00000 : 0.74277 : 0.05159 : 0.37738 : 0.00000 : 1.07441 : 0 : 0.60099
+// 15 | 1035076 |   16  |    438 | 4 : 1.00000 : 0.00000 : 0.74277 : 0.09926 : 0.31411 : 0.04150 : 1.07441 : 4 : 0.43569
+// 17 | 1033696 |   11  |    326 | 4 : 1.00000 : 0.00000 : 0.58795 : 0.05159 : 0.31411 : 0.04150 : 0.85680 : 0 : 0.50099
+// 16 | 1028686 |   19  |    520 | 3 : 0.87988 : 0.00146 : 0.41297 : 0.00000 : 0.13837 : 0.04150 : 0.75680 : 0 : 0.40099
+// 14 | 1028004 |   16  |    446 | 4 : 0.96911 : 0.00000 : 0.58795 : 0.05159 : 0.31411 : 0.04150 : 0.85680 : 0 : 0.50099
+// 15 | 1024684 |   19  |    513 | 4 : 0.87988 : 0.00000 : 0.72674 : 0.03365 : 0.13912 : 0.04150 : 1.00000 : 1 : 0.86038
+// 18 | 1023192 |   16  |    445 | 4 : 0.96911 : 0.00000 : 0.58795 : 0.05159 : 0.31411 : 0.04150 : 0.85680 : 0 : 0.45507
+// 18 | 1006740 |   23  |    596 | 3 : 0.87988 : 0.00000 : 0.58795 : 0.14926 : 0.31411 : 0.00000 : 0.85680 : 0 : 0.40099
+// 14 |  981936 |   22  |    581 | 4 : 1.00452 : 0.00000 : 0.72674 : 0.00000 : 0.40903 : 0.14150 : 0.99663 : 0 : 0.40099
+// 15 |  980155 |   20  |    541 | 4 : 1.00452 : 0.00000 : 0.72674 : 0.00000 : 0.40903 : 0.14150 : 0.99663 : 0 : 0.59464
