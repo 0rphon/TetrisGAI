@@ -439,13 +439,13 @@ fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
                     Params::U(u) => {
                         match rng.gen_range(0,2) {
                             0 => *u = u.checked_sub(U_NUDGE).unwrap_or(U_RANGE.0),
-                            _ => *u = if *u+U_NUDGE > U_RANGE.1 {U_RANGE.1} else {*u+U_NUDGE},
+                            _ => *u = if *u+U_NUDGE >= U_RANGE.1 {U_RANGE.1} else {*u+U_NUDGE},
                         }
                     },
                     Params::F(f) => {
                         match rng.gen_range(0,2) {
-                            0 => *f = if *f-F_NUDGE < 0.0 {F_RANGE.0} else {*f+F_NUDGE},
-                            _ => *f = if *f+F_NUDGE > F_RANGE.1 {F_RANGE.1} else {*f+F_NUDGE},
+                            0 => *f = if *f-F_NUDGE <= 0.0 {F_RANGE.0} else {*f+F_NUDGE},
+                            _ => *f = if *f+F_NUDGE >= F_RANGE.1 {F_RANGE.1} else {*f+F_NUDGE},
                         }
                     },
                 }
