@@ -1,12 +1,13 @@
 use super::*;
 
+use dynerr::*;
+
 use std::io::ErrorKind::NotFound;
 use std::str::Split;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::convert::TryInto;
 use std::fmt;
-use dynerr::*;
 
 ///parses T from string
 macro_rules! params_parse {
@@ -102,7 +103,7 @@ impl BestResult {
             ).collect::<Vec<progress::BestResult>>()
         );
         best.sort_by(|a, b| b.result.score.cmp(&a.result.score));
-        best.dedup();
+        best.dedup_by(|a, b| a.result.parameters.eq(&b.result.parameters));
         if best.len() > 10 {best.drain(10..);}
     }
 }
