@@ -22,7 +22,7 @@ fn parse_game_result(mut fields: Split<char> ) -> DynResult<GameResult> {
         level: params_parse!(fields),
         placed: params_parse!(fields),
         parameters: Some(ai::AiParameters::construct(
-            fields.map(|p| 
+            fields.next().ok_or("Failed to parse params")?.split(':').map(|p|
                 Ok(p.replace(" ","").parse()?)
             ).collect::<DynResult<Vec<f32>>>()?.as_slice().try_into()?
         ))
