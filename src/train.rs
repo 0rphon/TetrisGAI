@@ -48,7 +48,7 @@ const MAX_LEVEL: usize          = 30;   //20
 const DISPLAY_INTERVAL: usize   = 13;
 
 //range that usize parameters can be between
-const U_RANGE: (usize, usize)   = (0, 5);       //max *should* be 4 (aka 5 because this is an exclusive range)
+const U_RANGE: (usize, usize)   = (0, 4);       //max *should* be 4. inclusive upper
 //range that float parameters can be between
 const F_RANGE: (f32, f32)       = (0.0, 1.0);
 //how big a usize nudge is

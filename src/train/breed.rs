@@ -9,7 +9,7 @@ use rand::Rng;
 fn random_param() -> ai::AiParameters {
     let mut rng = rand::thread_rng();
     ai::AiParameters {
-        min_lines_to_clear:             rng.gen_range(U_RANGE.0, U_RANGE.1) as f32,
+        min_lines_to_clear:             rng.gen_range(U_RANGE.0, U_RANGE.1+1) as f32,
         lines_cleared_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
         points_scored_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
         piece_depth_importance:         rng.gen_range(F_RANGE.0, F_RANGE.1),
@@ -17,7 +17,7 @@ fn random_param() -> ai::AiParameters {
         avg_height_importance:          rng.gen_range(F_RANGE.0, F_RANGE.1),
         height_variation_importance:    rng.gen_range(F_RANGE.0, F_RANGE.1),
         current_holes_importance:       rng.gen_range(F_RANGE.0, F_RANGE.1),
-        max_pillar_height:              rng.gen_range(U_RANGE.0, U_RANGE.1) as f32,
+        max_pillar_height:              rng.gen_range(U_RANGE.0, U_RANGE.1+1) as f32,
         current_pillars_importance:     rng.gen_range(F_RANGE.0, F_RANGE.1),
     }
 }
@@ -87,14 +87,14 @@ fn nudge_genes(kids: &mut Vec<[f32;10]>, mut rng: ThreadRng) {
                 match i {
                     0|8 => {
                         match rng.gen_range(0,2) {
-                            0 => *gene = if *gene-U_NUDGE as f32 <= U_RANGE.0 as f32 {U_RANGE.0 as f32} else {*gene+U_NUDGE as f32},
+                            0 => *gene = if *gene-U_NUDGE as f32 <= U_RANGE.0 as f32 {U_RANGE.0 as f32} else {*gene-U_NUDGE as f32},
                             _ => *gene = if *gene+U_NUDGE as f32 >= U_RANGE.1 as f32 {U_RANGE.1 as f32} else {*gene+U_NUDGE as f32},
                         }
                     }
                     _ => {
                         let f_nudge = rng.gen_range(F_NUDGE_RANGE.0, F_NUDGE_RANGE.1);
                         match rng.gen_range(0,2) {
-                            0 => *gene = if *gene-f_nudge <= F_RANGE.0 {F_RANGE.0} else {*gene+f_nudge},
+                            0 => *gene = if *gene-f_nudge <= F_RANGE.0 {F_RANGE.0} else {*gene-f_nudge},
                             _ => *gene = if *gene+f_nudge >= F_RANGE.1 {F_RANGE.1} else {*gene+f_nudge},
                         }
                     }
@@ -112,7 +112,7 @@ fn mutate_genes(kids: &mut Vec<[f32;10]>, mut rng: ThreadRng) {
         for (i, gene) in cronenberg.iter_mut().enumerate() {
             if rng.gen_range(0.0, 1.0) <= MUTATION_CHANCE {
                 match i {
-                    0|8 => *gene = rng.gen_range(U_RANGE.0, U_RANGE.1) as f32,
+                    0|8 => *gene = rng.gen_range(U_RANGE.0, U_RANGE.1+1) as f32,
                     _   => *gene = rng.gen_range(F_RANGE.0, F_RANGE.1)
                 }
             }
