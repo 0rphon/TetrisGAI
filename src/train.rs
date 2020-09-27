@@ -1,3 +1,4 @@
+//! THIS ENTIRE MODULE IS A MESS! but hey...its not meant for production, only training so...it works i guess?
 use std::io::ErrorKind::NotFound;
 use super::game::{Board, Move};
 use super::ai;
@@ -9,9 +10,11 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::str::Split;
+use std::mem;
 
 use rand::Rng;
 use threadpool::ThreadPool;
+
 //my params
 //let parameters = ai::AiParameters {
 //    min_cleared_rows:               3,
@@ -38,24 +41,26 @@ const SIM_TIMES: usize          = 50;   //50
 ///how many game sims can be running at once
 const POOL_SIZE: usize          = 10;   //10
 ///generation size
-const BATCH_SIZE: usize         = 200;  //200
+const BATCH_SIZE: usize         = 200;  //200           try to keep div by 5
 ///how many generations to run
-const GENERATIONS: usize        = 0;    //200       IF 0 THEN INFINITE
+const GENERATIONS: usize        = 0;    //200           IF 0 THEN INFINITE
 ///max level before timeout
-const MAX_LEVEL: usize          = 10;   //20
+const MAX_LEVEL: usize          = 30;   //20
 ///how often to update screen
 const DISPLAY_INTERVAL: usize   = 13;
 
 const U_RANGE: (usize, usize)   = (0, 5);       //max 4
 const F_RANGE: (f32, f32)       = (0.0, 1.0);
+const U_NUDGE: usize            = 1;
+const F_NUDGE: f32              = 0.05;
 
-const BREEDER_PERCENT: f32      = 0.10; //should all add up to 100%
-const PERCENT_SPLIT: f32        = 0.00;
-const PERCENT_SWAP: f32         = 0.80;
-const PERCENT_AVG: f32          = 0.00;
+const BREEDER_PERCENT: f32      = 0.20; //should all add up to 100% try to keep div by 5
+const PERCENT_CROSS: f32        = 0.70;
+const PERCENT_INSERT: f32       = 0.00;
 const PERCENT_RAND: f32         = 0.10;
 
-const SWAP_CHANCE: f32          = 0.25; //% of chromosomes will swap
+const INSERT_CHANCE: f32        = 0.10; //% of chromosomes in insert pool will be inserted
+const NUDGE_CHANCE: f32         = 0.10; //% of chromosomes will get nudged
 const MUTATION_CHANCE: f32      = 0.05; //% of chromosomes will mutate
 
 
@@ -165,7 +170,7 @@ fn format_time(seconds: u64, formatting: &str) -> String {
     disp
 }
 
-fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &Vec<GameResult>) {
+fn display_gen_info(total_start: Instant, past_elapsed: u64, start: Instant, gen: usize, results: &Vec<GameResult>) {
     let elapsed = (Instant::now()-start).as_secs();
     println!("GENERATION {} COMPLETED IN {}       |    {:0.2}g/s    |    {:>3}    |    score variation: {}",
         gen+1,
@@ -174,15 +179,19 @@ fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &
         results.iter().map(|r| r.placed).sum::<usize>()/results.len(),
         results[0].score-results[BATCH_SIZE-1].score
     );
-    let total_elapsed = (Instant::now()-total_start).as_secs();
+    let session_elapsed = (Instant::now()-total_start).as_secs();
+    let total_elapsed = (Instant::now()-total_start).as_secs()+past_elapsed;
     let eta = ((GENERATIONS as u64 * total_elapsed)
                 .checked_div(gen as u64)
                 .unwrap_or(0))
                 .checked_sub(total_elapsed)
                 .unwrap_or(0);
-    print!("ELAPSED: {}           ",format_time(total_elapsed, "dhms"));
+    print!("SESSION: {}    ",format_time(session_elapsed, "dhms"));
+    if session_elapsed!=total_elapsed {
+        print!("|    TOTAL: {}    ", format_time(total_elapsed, "dhms"));
+    }
     if GENERATIONS != 0 {
-        print!("|           TOTAL ETA: {}",format_time(eta, "dhms"));
+        print!("|    TOTAL ETA: {}",format_time(eta, "dhms"));
     }
     println!();
     let disp_num = {if BATCH_SIZE >= 10 {10} else {BATCH_SIZE}};
@@ -192,7 +201,7 @@ fn display_gen_info(total_start: Instant, start: Instant, gen: usize, results: &
         results[0..disp_num].iter().map(|r| r.level).sum::<usize>()/disp_num,
     );
     GameResult::print_header();
-    let disp_num = {if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}};
+    let disp_num = {if BATCH_SIZE >= 5 {5} else {BATCH_SIZE}};
     for i in 0..disp_num {
         println!("  {:>2} |{}", i+1, results[i]);
     }
@@ -313,11 +322,14 @@ fn random_generation() -> Vec<ai::AiParameters> {
 
 
 //attempts to get the progress of last species trained
-fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
+fn get_progress() -> DynResult<Option<(usize, u64, Vec<GameResult>)>>{
     match File::open("species.log") {
         Ok(file) => {
             let mut prog = BufReader::new(file).lines().map(|l| Ok(l?)).collect::<DynResult<Vec<String>>>()?.into_iter();
-            let gen = prog.next().ok_or("Failed to parse")?.parse()?;
+            let header = prog.next().ok_or("Failed to parse")?;
+            let mut header = header.split("|");
+            let gen = params_parse!(header);
+            let elapsed = params_parse!(header);
             let generation = prog.map(|line| {
                 let mut fields = line.split('|');
                 Ok(GameResult {
@@ -327,7 +339,7 @@ fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
                     parameters: Some(Params::parse(fields.next().ok_or("Failed to parse")?.split(':'))?),
                 })
             }).collect::<DynResult<Vec<GameResult>>>()?;
-            Ok(Some((gen, generation)))
+            Ok(Some((gen, elapsed, generation)))
         },
         Err(e) if e.kind() == NotFound => {Ok(None)},
         Err(e) => dynerr!(e),
@@ -336,19 +348,20 @@ fn get_progress() -> DynResult<Option<(usize, Vec<GameResult>)>>{
 
 
 //gets the best results, or empty vec if best.log doesnt exist
-fn get_best_results() -> DynResult<Vec<GameResult>> {
+fn get_best_results() -> DynResult<Vec<(usize, GameResult)>> {
     match File::open("best.log") {
         Ok(file) => {
             let prog = BufReader::new(file).lines().map(|l| Ok(l?)).collect::<DynResult<Vec<String>>>()?.into_iter();
             let best_results = prog.map(|line| {
                 let mut fields = line.split('|');
-                Ok(GameResult {
+                let gen = params_parse!(fields); 
+                Ok((gen, GameResult {
                     score: params_parse!(fields),
                     level: params_parse!(fields),
                     placed: params_parse!(fields),
                     parameters: Some(Params::parse(fields.next().ok_or("Failed to parse")?.split(':'))?),
-                })
-            }).collect::<DynResult<Vec<GameResult>>>()?;
+                }))
+            }).collect::<DynResult<Vec<(usize, GameResult)>>>()?;
             Ok(best_results)
         }
         Err(e) if e.kind() == NotFound => {Ok(Vec::new())},
@@ -356,8 +369,10 @@ fn get_best_results() -> DynResult<Vec<GameResult>> {
     }
 }
 
-
-//takes breeders and breeds next generation
+//needs to take entire list and do the whole "more likely to breed better ones" thing
+//because right now im getting convergence way too early
+//it'll allow me to keep a larger pool of diversity by not trimming 80% every gen
+///takes breeders and breeds next generation
 fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
     assert_eq!(breeders.len(), (BATCH_SIZE as f32*BREEDER_PERCENT) as usize);
     let mut rng = rand::thread_rng();
@@ -379,40 +394,23 @@ fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
         let fema = &params[couple.1];
         (male, fema)
     };
-    //left and right half's
-    for _ in 0..(BATCH_SIZE as f32*PERCENT_SPLIT) as usize {
+    //crossover
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_CROSS) as usize/2 {
         let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        let divide = rng.gen_range(0, kid.len());
-        for x in 0..divide {kid[x] = male[x]}
-        for y in divide..kid.len() {kid[y] = fema[y]}
-        kids.push(kid);
+        let mut kid1 = male.clone();
+        let mut kid2 = fema.clone();
+        let divide = rng.gen_range(0, kid1.len());
+        for x in 0..divide {mem::swap(&mut kid1[x], &mut kid2[x])}
+        kids.push(kid1);
+        kids.push(kid2);
     }
-    //swap fields
-    for _ in 0..(BATCH_SIZE as f32*PERCENT_SWAP) as usize {
+    //insert
+    for _ in 0..(BATCH_SIZE as f32*PERCENT_INSERT) as usize {
         let (male, fema) = get_couple(rng);
         let mut kid = [Params::U(0);10];
         for x in 0..kid.len() {
-            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= SWAP_CHANCE {kid[x] = fema[x]}
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= INSERT_CHANCE {kid[x] = fema[x]}
             else {kid[x] = male[x]}
-        }
-        kids.push(kid);
-    }
-    //averages
-    for _ in 0..(BATCH_SIZE as f32*PERCENT_AVG) as usize {
-        let (male, fema) = get_couple(rng);
-        let mut kid = [Params::U(0);10];
-        for x in 0..kid.len() {
-            if let Params::U(mu) = male[x] {
-                if let Params::U(fu) = fema[x] {
-                    kid[x] = Params::U((mu+fu)/2)
-                }
-            }
-            else if let Params::F(mf) = male[x] {
-                if let Params::F(ff) = fema[x] {
-                    kid[x] = Params::F((mf+ff)/2.0)
-                }
-            }
         }
         kids.push(kid);
     }
@@ -432,6 +430,29 @@ fn breed_next_gen(breeders: &[GameResult]) -> Vec<ai::AiParameters> {
         ];
         kids.push(kid);
     }
+
+    //nudge
+    for nudge in &mut kids {
+        for gene in nudge {
+            if rng.gen_range(F_RANGE.0, F_RANGE.1) <= NUDGE_CHANCE {
+                match gene {
+                    Params::U(u) => {
+                        match rng.gen_range(0,2) {
+                            0 => *u = u.checked_sub(U_NUDGE).unwrap_or(U_RANGE.0),
+                            _ => *u = if *u+U_NUDGE >= U_RANGE.1 {U_RANGE.1-1} else {*u+U_NUDGE},
+                        }
+                    },
+                    Params::F(f) => {
+                        match rng.gen_range(0,2) {
+                            0 => *f = if *f-F_NUDGE <= 0.0 {F_RANGE.0} else {*f+F_NUDGE},
+                            _ => *f = if *f+F_NUDGE >= F_RANGE.1 {F_RANGE.1} else {*f+F_NUDGE},
+                        }
+                    },
+                }
+            }
+        }
+    }
+
     //mutate
     for cronenberg in &mut kids {
         for gene in cronenberg {
@@ -513,17 +534,26 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
     Ok(results)
 }
 
+///saves current stats
+fn log_stats(best_results: &Vec<(usize, GameResult)>, breeders: &[GameResult], gen: usize, total_start: Instant, past_elapsed: u64) {
+    clean!("best.log");
+    for res in best_results {log!(format!("{:2>} |{}",res.0, res.1), "best.log");}
+    clean!("species.log");
+    log!(format!("{} | {}", gen, (Instant::now()-total_start).as_secs()+past_elapsed), "species.log");
+    for res in breeders {log!(res, "species.log");}
+}
+
 
 ///does the actual training
 pub fn train() -> DynResult<()> {
-    let (mut gen, mut generation) = match check!(get_progress()) {
-        Some((gen, results)) => {
+    let (mut gen, past_elapsed, mut generation) = match check!(get_progress()) {
+        Some((gen, elapsed, results)) => {
             println!("RESUMING SPECIES FROM GENERATION {}", gen);
-            (gen, breed_next_gen(&results))            
+            (gen, elapsed, breed_next_gen(&results))            
         },
         None => {
             println!("STARTING NEW SPECIES");
-            (0, random_generation())
+            (0, 0, random_generation())
         },
     };
     let mut best_results = check!(get_best_results());
@@ -533,18 +563,18 @@ pub fn train() -> DynResult<()> {
         println!("STARTING GENERATION {}", gen);
         let start = Instant::now();
         let results = check!(do_generation(generation));
-        display_gen_info(total_start, start, gen-1, &results);
+        display_gen_info(total_start, past_elapsed, start, gen-1, &results);
         //update and log best results
-        best_results.extend_from_slice(&results[0..{if BATCH_SIZE >= 3 {3} else {BATCH_SIZE}}]);
-        best_results.sort_by(|a, b| b.score.cmp(&a.score));
+        best_results.extend(
+            results[0..{if BATCH_SIZE >= 10 {10} else {BATCH_SIZE}}].iter().map(|r| 
+                (gen, r.clone())
+            ).collect::<Vec<(usize, GameResult)>>()
+        );
+        //update and log stats
+        best_results.sort_by(|a, b| b.1.score.cmp(&a.1.score));
         if best_results.len() > 10 {best_results.drain(10..);}
-        clean!("best.log");
-        for res in &best_results {log!(res, "best.log");}
-        //get and log breeders
         let breeders = &results[0..(BATCH_SIZE as f32*BREEDER_PERCENT) as usize];
-        clean!("species.log");
-        log!(gen, "species.log");
-        for res in breeders {log!(res, "species.log");}
+        log_stats(&best_results, breeders, gen, total_start, past_elapsed);
         //breed
         generation = breed_next_gen(breeders);
         //generation logic
@@ -557,7 +587,7 @@ pub fn train() -> DynResult<()> {
     println!("BEST RESULTS");
     GameResult::print_header();
     let disp_num = {if GENERATIONS >= 10 {10} else {GENERATIONS}};
-    for i in 0..disp_num {println!("  {:>2} |{}", i+1, best_results[i])}
+    for i in 0..disp_num {println!("  {:>2} | {} |{}", i+1, best_results[i].0, best_results[i].1)}
     Ok(())
 }
 
@@ -594,20 +624,50 @@ pub fn train() -> DynResult<()> {
 //benchmark AI functions
 //change pieces to vec<&bool> then shuffle references to rotate. avoids the clone required during rotation
 
+//improve breeding function
+//add minor mutations (add/sub 0.5 or something from current value to help nudge it out of pockets)
 
 
-//50x10x200x100 max lvl 20 breed params 0.10 0.30 0.30 2 0.30 00.3              U0..5 F0.0..1.0
-// 100 generations completed in 00d07h21m23s
-// Average of 1 generation every 00h04m24s
-// BEST RESULTS
-// RANK |  SCORE  | LEVEL | PLACED | PARAMS
-//    1 |  513214 |   18  |    461 | 2 : 0.919 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.392
-//    2 |  503686 |   19  |    497 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.962 : 0 : 0.436
-//    3 |  502776 |   18  |    482 | 2 : 0.923 : 0.006 : 0.572 : 0.019 : 0.143 : 0.012 : 0.986 : 0 : 0.417
-//    4 |  499429 |   19  |    496 | 2 : 0.923 : 0.006 : 0.572 : 0.052 : 0.143 : 0.012 : 0.983 : 0 : 0.418
-//    5 |  496683 |   19  |    492 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.461
-//    6 |  495158 |   19  |    495 | 2 : 0.924 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.461
-//    7 |  493801 |   19  |    490 | 2 : 0.924 : 0.006 : 0.604 : 0.053 : 0.141 : 0.012 : 0.995 : 0 : 0.503
-//    8 |  492266 |   19  |    490 | 2 : 0.924 : 0.006 : 0.571 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
-//    9 |  492208 |   19  |    493 | 2 : 0.906 : 0.006 : 0.572 : 0.049 : 0.143 : 0.012 : 0.995 : 0 : 0.460
-//   10 |  491048 |   19  |    498 | 2 : 0.923 : 0.006 : 0.572 : 0.053 : 0.143 : 0.012 : 0.981 : 0 : 0.428
+
+//had it catching up from 10 to 20. this is what it looked like before i set it on 30 and went to bed
+// 53
+//   954805 |   13  |    362 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.11643
+//   861060 |   13  |    361 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+//   837389 |   12  |    344 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.33975
+//   813738 |   12  |    339 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.00861 : 0.42276 : 0 : 0.06300
+//   809012 |   12  |    335 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.64071 : 0 : 0.36368
+//   804263 |   12  |    333 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.33975
+//   802046 |   15  |    407 | 4 : 0.69280 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+//   798369 |   12  |    340 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+//   778202 |   11  |    314 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.64071 : 0 : 0.14467
+//   757560 |   12  |    343 | 4 : 0.80500 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.14467
+//   739954 |   11  |    313 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+//   738032 |   11  |    323 | 4 : 0.83073 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.43493 : 0 : 0.14467
+//   735720 |   10  |    291 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 1 : 0.06300
+//   724220 |   12  |    341 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 2 : 0.06300
+//   714934 |   11  |    316 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.43493 : 0 : 0.14467
+//   712811 |   10  |    293 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.62516 : 0 : 0.14467
+//   706636 |    9  |    270 | 3 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.06300
+//   697394 |   10  |    295 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.33975
+//   693132 |   11  |    317 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 2 : 0.06300
+//   691278 |   10  |    294 | 4 : 0.87685 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.14467
+//   689514 |    9  |    277 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.71503 : 0 : 0.14467
+//   683462 |   11  |    309 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.10977
+//   676975 |   11  |    307 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.33975
+//   675577 |   10  |    284 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.57338 : 0 : 0.40332
+//   672015 |   10  |    292 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 1 : 0.06300
+//   650116 |   10  |    282 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.43493 : 0 : 0.14467
+//   649753 |   14  |    385 | 4 : 0.79000 : 0.00100 : 0.21726 : 0.23985 : 0.09200 : 0.01900 : 0.56915 : 0 : 0.33975
+//   639344 |   10  |    290 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.33975
+//   635224 |   10  |    294 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 2 : 0.06300
+//   630741 |    9  |    265 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+//   609152 |    9  |    273 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.51535 : 2 : 0.14467
+//   604470 |    9  |    263 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.33975
+//   602932 |    9  |    274 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 3 : 0.33975
+//   600642 |    9  |    251 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.57338 : 0 : 0.40332
+//   596260 |    9  |    262 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 2 : 0.06300
+//   593022 |    9  |    271 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.43493 : 0 : 0.14467
+//   582988 |    9  |    252 | 4 : 0.79000 : 0.00100 : 0.33926 : 0.05000 : 0.09200 : 0.01900 : 0.59161 : 0 : 0.36368
+//   582616 |    5  |    182 | 4 : 0.87685 : 0.00100 : 0.13340 : 0.05000 : 0.09200 : 0.01900 : 0.56915 : 0 : 0.11643
+//   578648 |    7  |    214 | 4 : 0.79000 : 0.00100 : 0.16135 : 0.05000 : 0.09200 : 0.01900 : 0.42276 : 0 : 0.06300
+//   576082 |    6  |    196 | 4 : 0.79000 : 0.00100 : 0.21726 : 0.05000 : 0.09200 : 0.01900 : 0.62823 : 0 : 0.11643
