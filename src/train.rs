@@ -52,7 +52,7 @@ const DISPLAY_INTERVAL: usize   = 13;
 const U_RANGE: (usize, usize)   = (0, 5);       //max 4
 const F_RANGE: (f32, f32)       = (0.0, 1.0);
 const U_NUDGE: usize            = 1;
-const F_NUDGE: f32              = 0.1;
+const F_NUDGE: f32              = 0.05;
 
 const BREEDER_PERCENT: f32      = 0.20; //should all add up to 100% try to keep div by 5
 const PERCENT_CROSS: f32        = 0.70;
@@ -537,7 +537,7 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
 ///saves current stats
 fn log_stats(best_results: &Vec<(usize, GameResult)>, breeders: &[GameResult], gen: usize, total_start: Instant, past_elapsed: u64) {
     clean!("best.log");
-    for res in best_results {log!(format!("{} |{}",res.0, res.1), "best.log");}
+    for res in best_results {log!(format!("{:2>} |{}",res.0, res.1), "best.log");}
     clean!("species.log");
     log!(format!("{} | {}", gen, (Instant::now()-total_start).as_secs()+past_elapsed), "species.log");
     for res in breeders {log!(res, "species.log");}
