@@ -40,17 +40,18 @@ pub fn run(train: bool, auto_loop: bool) {
     //208 | 1170614 |   16  |    443 | 0.0 : -0.61509 : 0.00227 : 1.49888 : 0.89981 : -1.63555 : -0.83318 : 1.94491 : 0.0 : 0.90794
     // 75 | 1158106 |   17  |    475 | 4.0 : 2.81089 : 0.00000 : 1.44516 : 0.00000 : 1.38000 : 0.12947 : 2.62338 : 0.0 : 0.97880
     //202 | 1037750 |    8  |    252 | 4.0 : 0.78193 : 0.00000 : 0.51338 : 0.09517 : 0.00000 : 0.04101 : 1.00000 : 0.0 : 0.22724
+    //251 | 2393169 |   37  |    958 | 4.0 : 0.91413 : 0.00000 : 0.66610 : 0.01078 : 0.22913 : 0.05655 : 0.78533 : 0.0 : 0.27396        4.11M lvl 65 i think thats good enough tbh
     let parameters = ai::AiParameters {
         min_lines_to_clear:             4.0,
-        lines_cleared_importance:       2.81089,
+        lines_cleared_importance:       0.91413,
         points_scored_importance:       0.00000,
-        piece_depth_importance:         1.44516,
-        max_height_importance:          0.00000,
-        avg_height_importance:          1.38000,
-        height_variation_importance:    0.12947,
-        current_holes_importance:       2.62338,
+        piece_depth_importance:         0.66610,
+        max_height_importance:          0.01078,
+        avg_height_importance:          0.22913,
+        height_variation_importance:    0.05655,
+        current_holes_importance:       0.78533,
         max_pillar_height:              0.0,
-        current_pillars_importance:     0.97880,
+        current_pillars_importance:     0.27396,
     };
 
     let mut board = check!(Board::new_board());

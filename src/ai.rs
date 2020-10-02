@@ -137,23 +137,23 @@ impl MoveData {
     fn calc_board(&mut self, parameters: &AiParameters) {
         let (scored, cleared) = self.do_clear();
         //gets how many lines cleared adjusted for min_lines_to_clear importance
-        let lines_cleared    = (cleared*parameters.lines_cleared_importance)*{if cleared >= parameters.min_lines_to_clear {1.0} else {-1.0}};
+        let lines_cleared     = (cleared*parameters.lines_cleared_importance)*{if cleared >= parameters.min_lines_to_clear {1.0} else {-1.0}};
         //updates board and gets points scored
-        let points_scored    = scored*parameters.points_scored_importance;
+        let points_scored     = scored*parameters.points_scored_importance;
         //gets how far down the piece was placed
-        let piece_depth      = self.location.1 as f32*parameters.piece_depth_importance;                                           //y location should always be positive
+        let piece_depth       = self.location.1 as f32*parameters.piece_depth_importance;                                           //y location should always be positive
         //gets heights of every column
-        let column_heights   = self.get_heights();
+        let column_heights    = self.get_heights();
         //tallest column
-        let max_height       = *column_heights.last().unwrap() as f32*parameters.max_height_importance;                                        //DIRECT UNWRAP
+        let max_height        = *column_heights.last().unwrap() as f32*parameters.max_height_importance;                                        //DIRECT UNWRAP
         //average column height
-        let avg_height       = (column_heights.iter().sum::<usize>() as f32/column_heights.len() as f32)*parameters.avg_height_importance;
+        let avg_height        = (column_heights.iter().sum::<usize>() as f32/column_heights.len() as f32)*parameters.avg_height_importance;
         //tallest column - smallest column
-        let height_variation = ((column_heights.last().unwrap_or(&BOARD_HEIGHT)-column_heights.first().unwrap_or(&0)) as f32)*parameters.height_variation_importance;
+        let height_variation  = ((column_heights.last().unwrap_or(&BOARD_HEIGHT)-column_heights.first().unwrap_or(&0)) as f32)*parameters.height_variation_importance;
         //how many gaps exist in columns
-        let current_holes    = self.calc_holes()*parameters.current_holes_importance;
+        let current_holes     = self.calc_holes()*parameters.current_holes_importance;
         //how many spots where empty spaces surrounded by filled spaces on either side exist (over the set max allowed pillar height)
-        let current_pillars  = self.calc_pillars(parameters.max_pillar_height)*parameters.current_pillars_importance;
+        let current_pillars   = self.calc_pillars(parameters.max_pillar_height)*parameters.current_pillars_importance;
 
         self.debug_scores = vec!(lines_cleared, points_scored, piece_depth, max_height, avg_height, height_variation, current_holes, current_pillars);
         self.value = lines_cleared+points_scored+piece_depth-max_height-avg_height-height_variation-current_holes-current_pillars;

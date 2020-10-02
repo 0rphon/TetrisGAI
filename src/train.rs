@@ -43,7 +43,7 @@ const BATCH_SIZE: usize         = 200;  //200
 ///how many generations to run
 const GENERATIONS: usize        = 0;    //IF 0 THEN INFINITE
 ///max level before timeout
-const MAX_LEVEL: usize          = 100;   //20
+const MAX_LEVEL: usize          = 50;   //20
 ///how often to update screen
 const DISPLAY_INTERVAL: usize   = 13;
 
@@ -54,7 +54,7 @@ const F_RANGE: (f32, f32)       = (0.0, 1.0);
 //how big a usize nudge is
 const U_NUDGE: usize            = 1;
 //range that a float nudge can be between
-const F_NUDGE_RANGE: (f32,f32)  = (0.01, 0.2);
+const F_NUDGE_RANGE: (f32,f32)  = (0.001, 0.02);
 
 const BREEDER_PERCENT: f32      = 0.20; //extra space will be filled in with randoms
 const PERCENT_CROSS: f32        = 0.80; //extra space will be filled in with randoms
