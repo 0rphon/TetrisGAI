@@ -204,7 +204,7 @@ impl MoveData {
             for _ in 0..BOARD_HEIGHT {
                 if !self.board[idx]
                 && (
-                    *self.board.get((idx).checked_sub(1).unwrap_or(9999)).unwrap_or(&true)                         //SLOPPY SOLUTION TO LEFT OF SCREEN INDEX
+                    *self.board.get((idx).checked_sub(1).unwrap_or(9999)).unwrap_or(&true)                         //SLOPPY SOLUTION
                     || x == 0                                                                                           //CHECK IF EDGE OF SCREEN
                 ) && (
                     *self.board.get(idx).unwrap_or(&true)
@@ -273,7 +273,7 @@ impl MoveData {
         }
         moves.push(Move::Drop);
         if log_flag {
-            //LOGGING##################################################################################################
+            //TEMP DEBUG LOGGING#######################################################################################
             log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.value), "ai.log");   //#
             let mut scores = String::new();                                                                         //#
             for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
@@ -304,7 +304,6 @@ impl MoveData {
     }
 }
 
-//TODO THIS IS FUCKING BACKWARDS TO HOW THE GAME DOES ROTATION HOLY SHIT WHAT
 ///rotates piece data
 fn rotate_piece(piece: &mut pieces::Piece) {
     let original = piece.data.clone();

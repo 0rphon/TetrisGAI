@@ -85,7 +85,7 @@ impl GameResult {
             score:  results.iter().map(|r| r.score).sum::<usize>()/results.len(),
             level:  results.iter().map(|r| r.level).sum::<usize>()/results.len(),
             placed: results.iter().map(|r|r.placed).sum::<usize>()/results.len(),
-            parameters: Some(parameters),                                                              //EXPLICIT UNWRAP ON POP
+            parameters: Some(parameters),                                  
         }
     }
 
