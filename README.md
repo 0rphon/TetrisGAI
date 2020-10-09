@@ -9,6 +9,6 @@ Everyone knows tetris\
 but what about super powered auto-tetris?\
 ![](ai.gif)\
 \
-i havent updated the UI yet, but hit P to activate the AI. --auto-loop to let the ai restart games on its own.\
+--auto-loop to let the ai restart games on its own.\
 if youre interested in training your own AI, pass the arg --train.\
 i have plans to set up config files for the AI so it can be trained and changed without recompiling, but for now look at the constants in train.rs to change how the evolutionary alg works.

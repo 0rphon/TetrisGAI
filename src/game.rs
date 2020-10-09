@@ -21,7 +21,7 @@ pub const BOARD_HEIGHT: usize               = 20;
 ///the left and right padding of board in blocks
 const BOARD_PAD: usize                      = 5;
 ///the screen sprite
-const BOARD_SPRITE: &[u8; 7408]             = include_bytes!("sprites/board.png");
+const BOARD_SPRITE: &[u8; 7581]             = include_bytes!("sprites/board.png");
 ///the location of the next piece in blocks
 const NEXT_PIECE_LOCATION: (isize, isize)   = (16,1);
 ///the location of the held piece in blocks
