@@ -77,7 +77,6 @@ impl AiParameters {
 ///possible piece movements
 #[derive(Debug, Clone)]
 pub enum Move {
-    //Down,
     Left,
     Right,
     Rotate,

@@ -1,4 +1,3 @@
-//#![windows_subsystem = "windows"]         //UNCOMMENT FOR RELEASE
 #![feature(test)]
 pub mod game;
 pub use game::{Board, Move};
@@ -83,7 +82,6 @@ pub fn run(train: bool, auto_loop: bool) {
             if ai_radio.is_some() {
                 if let Some(ai_input) = check!(ai_radio.as_ref().unwrap().get_input()) {
                     match ai_input {
-                        //ai::Move::Down      => {board.move_piece(Move::Down);},
                         ai::Move::Left      => {board.move_piece(Move::Left);},
                         ai::Move::Right     => {board.move_piece(Move::Right);},
                         ai::Move::Rotate    => {board.rotate_piece();}

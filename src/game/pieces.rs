@@ -69,7 +69,7 @@ const L_DATA: [bool;L_DIM*L_DIM] = [
     false, false, false,
 ];
 
-//TODO why isnt this a struct???
+//TODO why isn't this a struct???
 ///list of piece info (Sprite, data, piece dimensions)
 pub type PieceIndex = HashMap<PieceType, (Sprite, Vec<bool>, usize)>;
 ///piece types
@@ -96,8 +96,7 @@ impl PieceType {
         Sprite::add(BLOCK_SIZE, BLOCK_SIZE, block)
     }
     
-    
-    //only run during board creating so i didnt bother benchmarking
+    //not benched
     ///generates a pieces associated info
     fn gen_piece_entry(&self) -> (Sprite, Vec<bool>, usize) {
         match *self {
@@ -126,7 +125,7 @@ impl PieceType {
         }
     }
     
-    //only run during board creating so i didnt bother benchmarking
+    //only runs during board creation so i didnt bother benchmarking
     ///generates hashmap index of pieces and their associated data
     pub fn gen_piece_index() -> PieceIndex {
         let mut index = HashMap::new();

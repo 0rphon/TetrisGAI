@@ -118,32 +118,30 @@ impl Board {
 
     ///attempts to hold the current piece
     pub fn hold_piece(&mut self) -> DynResult<bool> {
-        if !self.gameover {
-            if self.piece.can_hold {
-                self.piece.location = self.spawn;
-                self.piece.reset_rotation(&self.piece_index);
-                if let Some(held) = self.held_piece.take(){
-                    self.held_piece = Some(mem::replace(&mut self.piece, held));
+        if !self.gameover && self.piece.can_hold {
+            self.piece.location = self.spawn;
+            self.piece.reset_rotation(&self.piece_index);
+            if let Some(held) = self.held_piece.take(){
+                self.held_piece = Some(mem::replace(&mut self.piece, held));
+            }
+            else {
+                unsafe {
+                    #[allow(invalid_value)]
+                    let piece = mem::replace(                                           //UNSAFE CODE BUT DONT WORRY ITS SAFE
+                        &mut self.piece,
+                        mem::MaybeUninit::<pieces::Piece>::zeroed().assume_init()
+                    );
+                    self.held_piece = Some(piece);
+                    if !self.next_piece() {
+                        self.piece = self.held_piece.take().unwrap();
+                        self.held_piece = None;
+                        return Ok(false);
+                    };
                 }
-                else {
-                    unsafe {
-                        #[allow(invalid_value)]
-                        let piece = mem::replace(                                           //UNSAFE CODE BUT DONT WORRY ITS SAFE
-                            &mut self.piece,
-                            mem::MaybeUninit::<pieces::Piece>::zeroed().assume_init()
-                        );
-                        self.held_piece = Some(piece);
-                        if !self.next_piece() {
-                            self.piece = self.held_piece.take().unwrap();
-                            self.held_piece = None;
-                            return Ok(false);
-                        };
-                    }
-                }
-                self.piece.can_hold = false;
-                self.update_shadow();
-                Ok(true)
-            } else {Ok(false)}
+            }
+            self.piece.can_hold = false;
+            self.update_shadow();
+            Ok(true)
         } else {Ok(false)}
     }
 
