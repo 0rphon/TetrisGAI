@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]          //COMMENT OUT IF TRAINING!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 extern crate tetris;
 use std::env::args;
 

@@ -30,6 +30,13 @@ pub fn new_species() -> Vec<ai::AiParameters> {
 }
 
 
+///sorts results by level then sorts the top 1/4th of the results by score
+pub fn sort(results: &mut Vec<GameResult>) {
+    results.sort_by(|a, b| b.level.cmp(&a.level));
+    results[0..BATCH_SIZE/4].sort_by(|a, b| b.score.cmp(&a.score));
+}
+
+
 //gets two different random sets of ai parameters from vec
 fn get_couple(params: &Vec<[f32;10]>, mut rng: ThreadRng) -> ([f32;10], [f32;10]){
     let couple = {

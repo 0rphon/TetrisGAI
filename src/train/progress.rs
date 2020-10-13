@@ -96,6 +96,7 @@ impl BestResult {
         }
     }
 
+    ///update the best results
     pub fn update(best: &mut Vec<Self>, results: &Vec<GameResult>, gen: usize) {
         best.extend(
             results[0..{if BATCH_SIZE >= 10 {10} else {BATCH_SIZE}}].iter().map(|r| 

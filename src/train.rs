@@ -13,27 +13,6 @@ use std::sync::{Arc, Mutex, mpsc};
 
 use threadpool::ThreadPool;
 
-//my params
-//let parameters = ai::AiParameters {
-//    min_cleared_rows:               3,
-//    points_scored_importance:        0.50,
-//    piece_depth_importance:         0.25,
-//    max_height_importance:          0.75,
-//    avg_height_importance:          0.0,
-//    height_variation_importance:    0.5,
-//    current_holes_importance:       3.5,
-//    max_pillar_height:              2,
-//    current_pillars_importance:     0.75,
-//};
-
-
-//10x200  0:54 var 103764
-//15x200  1:19 var 78181
-//20x200  1:44 var 61896
-//25x200  2:08 var 57244
-//50x200  4:11 var 53444
-//100x200 8:38 var 38744
-
 ///times to run each AIs game
 const SIM_TIMES: usize          = 50;   //50
 ///how many game sims can be running at once
@@ -44,8 +23,6 @@ const BATCH_SIZE: usize         = 200;  //200
 const GENERATIONS: usize        = 0;    //IF 0 THEN INFINITE
 ///max level before timeout
 const MAX_LEVEL: usize          = 50;   //20
-///how often to update screen
-const DISPLAY_INTERVAL: usize   = 13;
 
 //range that usize parameters can be between
 const U_RANGE: (usize, usize)   = (0, 4);       //max *should* be 4. inclusive upper
@@ -167,10 +144,8 @@ fn do_generation(generation: Vec<ai::AiParameters>) -> DynResult<Vec<GameResult>
     }
     pool.join();
 
-    let mut results = rx.iter().take(BATCH_SIZE).collect::<Vec<GameResult>>();
     display_thread.stop()?;
-    results.sort_by(|a, b| b.score.cmp(&a.score));
-    Ok(results)
+    Ok(rx.iter().take(BATCH_SIZE).collect::<Vec<GameResult>>())
 }
 
 
@@ -193,7 +168,8 @@ pub fn train() -> DynResult<()> {
         gen+=1;
         println!("STARTING GENERATION {}", gen);
         time_handle.start_loop();
-        let results = check!(do_generation(generation));
+        let mut results = check!(do_generation(generation));
+        breed::sort(&mut results);
         display::display_gen_info(&time_handle, gen-1, &results);
         progress::BestResult::update(&mut best_results, &results, gen);
         let breeders = &results[0..(BATCH_SIZE as f32*BREEDER_PERCENT) as usize];

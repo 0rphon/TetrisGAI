@@ -2,6 +2,7 @@ use super::*;
 
 use std::thread;
 use std::time::Duration;
+use std::io::{self, Write};
 
 ///handle to the thread doing updates
 pub struct DisplayThread {
@@ -17,10 +18,6 @@ impl DisplayThread {
             let start = Instant::now();
             let mut last_progress = 0;
             loop {
-                for _ in 0..DISPLAY_INTERVAL {
-                    if let Ok(true) = rx.try_recv() {return}
-                    thread::sleep(Duration::from_secs(1))
-                }
                 let elapsed = (Instant::now()-start).as_secs();
                 let progress = {let p = prog.lock().unwrap(); *p};
                 let percent = ((progress as f32/(SIM_TIMES*BATCH_SIZE) as f32)*100.0) as usize;
@@ -29,14 +26,17 @@ impl DisplayThread {
                     .unwrap_or(0))
                     .checked_sub(elapsed)
                     .unwrap_or(0);
-                println!(
-                    "{}    |   {:>4}    |    {:5.02}g/s    |    ETA: {}",
+                print!(
+                    "\r{}    |   {:>4}    |    {:3}g/s    |    ETA: {}",
                     format_time(elapsed, "hms"),
                     format!("{:02}%",percent),
-                    {let p = (progress-last_progress) as f32/DISPLAY_INTERVAL as f32; if p.is_nan() {0.0} else {p}},
+                    progress-last_progress,
                     format_time(eta, "hms")
                 );
+                io::stdout().flush().unwrap();
                 last_progress = progress;
+                thread::sleep(Duration::from_secs(1));
+                if let Ok(true) = rx.try_recv() {return}
             }
         });
         Self {tx, handle}

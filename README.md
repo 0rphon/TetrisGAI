@@ -8,5 +8,6 @@ Everyone knows Tetris...but what about AI powered auto-tetris?\
 \
 --auto-loop to let the ai restart games on its own.\
 \
-I didnt really set up training for public use, but if you're interested in training your own AI then you can pass the arg --train. By default the console is suppressed on release builds, so if youre training then MAKE SURE to either compile in debug mode or comment out the cfg_attr line in main.rs so you can see the training output. As far as I can tell theres no way to change this behavior in rust.\
-I have plans to set up config files for the AI so it can be trained and changed without recompiling, but for now look at the constants in train.rs to change how the evolutionary alg works.
+I have plans to set up config files for the AI so it can be changed without recompiling, but for now look at the AiParameters instance in lib.rs to change how the AI decides things.\
+\
+I didnt really set up training for public use, but if you're interested in training your own AI then you can pass the arg --train. By default the console is suppressed on release builds, so if youre training then MAKE SURE to compile in debug mode so you can see the training output. As far as I can tell theres no way to change this behavior in rust. Look at the constants in train.rs to change how the evolutionary alg works.\
