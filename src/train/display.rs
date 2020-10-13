@@ -36,7 +36,10 @@ impl DisplayThread {
                 io::stdout().flush().unwrap();
                 last_progress = progress;
                 thread::sleep(Duration::from_secs(1));
-                if let Ok(true) = rx.try_recv() {return}
+                if let Ok(true) = rx.try_recv() {
+                    print!("\r");
+                    return
+                }
             }
         });
         Self {tx, handle}

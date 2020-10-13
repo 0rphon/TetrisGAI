@@ -30,10 +30,10 @@ pub fn new_species() -> Vec<ai::AiParameters> {
 }
 
 
-///sorts results by level then sorts the top 1/4th of the results by score
+///sorts results by score then sorts the top 1/4th of the results by level
 pub fn sort(results: &mut Vec<GameResult>) {
-    results.sort_by(|a, b| b.level.cmp(&a.level));
-    results[0..BATCH_SIZE/4].sort_by(|a, b| b.score.cmp(&a.score));
+    results.sort_by(|a, b| b.score.cmp(&a.score));
+    results[0..BATCH_SIZE/4].sort_by(|a, b| b.level.cmp(&a.level));
 }
 
 
