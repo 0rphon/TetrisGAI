@@ -1,7 +1,7 @@
 # tetris
 
 tetris clone with custom AI.\
-built in rust using my game engine Untitled_Engine and my error handling crate Dynerr. You can download the compiled windows binary [here](https://drive.google.com/file/d/12WrdRk6TMtHe93KBFNBXWSXnIR8WRBE0/view?usp=sharing)\
+built in rust using my game engine [Untitled_Engine](https://github.com/0rphon/Untitled_Game) and my error handling crate [Dynerr](https://github.com/0rphon/dynerr). You can download the compiled windows binary [here](https://drive.google.com/file/d/12WrdRk6TMtHe93KBFNBXWSXnIR8WRBE0/view?usp=sharing)\
 \
 Everyone knows tetris\
 ![gif of manual gameplay](player.gif)\
