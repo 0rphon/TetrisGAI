@@ -6,7 +6,7 @@ Built in rust using my game engine [Untitled_Engine](https://github.com/0rphon/U
 Everyone knows Tetris...but what about AI powered auto-tetris?\
 <img src="player.gif" width="45%" title="Player"/> <img src="ai.gif" width="45%" title="GAI"/>
 \
-I didnt really set up training for public use, but if you're interested in training your own AI then you can pass the arg --train. By default the console is suppressed on release builds, so if youre training then MAKE SURE to compile in debug mode so you can see the training output. As far as I can tell theres no way to change this behavior in rust. Look at the constants in train.rs to change how the evolutionary alg works. To use an AI you trained yourself use the flag --use_best.\
+I didnt really set up training for public use, but if you're interested in training your own AI then you can pass the arg --train. By default the console is suppressed on release builds, so if youre training then MAKE SURE to compile in debug mode so you can see the training output. As far as I can tell theres no way to change this behavior in rust. Look at the constants in train.rs to change how the evolutionary alg works. To use an AI you trained yourself use the flag --use_best.
 
 
 ```
