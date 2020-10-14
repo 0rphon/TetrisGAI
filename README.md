@@ -6,8 +6,19 @@ Built in rust using my game engine [Untitled_Engine](https://github.com/0rphon/U
 Everyone knows Tetris...but what about AI powered auto-tetris?\
 <img src="player.gif" width="45%" title="Player"/> <img src="ai.gif" width="45%" title="GAI"/>
 \
---auto-loop to let the ai restart games on its own.\
-\
-I have plans to set up config files for the AI so it can be changed without recompiling, but for now look at the AiParameters instance in lib.rs to change how the AI decides things.\
-\
-I didnt really set up training for public use, but if you're interested in training your own AI then you can pass the arg --train. By default the console is suppressed on release builds, so if youre training then MAKE SURE to compile in debug mode so you can see the training output. As far as I can tell theres no way to change this behavior in rust. Look at the constants in train.rs to change how the evolutionary alg works.\
+I didnt really set up training for public use, but if you're interested in training your own AI then you can pass the arg --train. By default the console is suppressed on release builds, so if youre training then MAKE SURE to compile in debug mode so you can see the training output. As far as I can tell theres no way to change this behavior in rust. Look at the constants in train.rs to change how the evolutionary alg works. To use an AI you trained yourself use the flag --use_best.\
+
+
+```
+TetrisGAI: Why go through the work of playing tetris when you could just automate it?
+
+--auto-loop:        Allow the AI to restart games on its own.
+
+--train:            Train your own AI. See the constants in train.rs to change how the AI is trained. 
+                    Can only be used in debug builds and cant be used with other commands.
+                    Still needs work.
+
+--use_best:         Use the top result from training. Stored in the top line of best.log.
+
+--help:             Show this command and exit.
+```
