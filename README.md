@@ -1,7 +1,7 @@
 # tetris
 
 A Tetris clone with custom AI.\
-Built in rust using my game engine [Untitled_Engine](https://github.com/0rphon/Untitled_Game) and my error handling crate [dynerr](https://github.com/0rphon/dynerr). You can download the compiled windows binary [here](https://drive.google.com/file/d/12WrdRk6TMtHe93KBFNBXWSXnIR8WRBE0/view?usp=sharing).\
+Built in rust using my game engine [Untitled_Engine](https://github.com/0rphon/Untitled_Game) and my error handling crate [dynerr](https://github.com/0rphon/dynerr). You can download the compiled windows binary [here](https://drive.google.com/file/d/1q_zFdKz8x6Ix-tjaRx5A03-nHbeur8S0/view?usp=sharing).\
 \
 Everyone knows Tetris...but what about AI powered auto-tetris?\
 <img src="player.gif" width="45%" title="Player"/> <img src="ai.gif" width="45%" title="GAI"/>
