@@ -27,7 +27,7 @@ impl DisplayThread {
                     .checked_sub(elapsed)
                     .unwrap_or(0);
                 print!(
-                    "\r{}    |   {:>4}    |    {:3}g/s    |    ETA: {}",
+                    "{}    |   {:>4}    |    {:3}g/s    |    ETA: {}\r",
                     format_time(elapsed, "hms"),
                     format!("{:02}%",percent),
                     progress-last_progress,
@@ -36,10 +36,7 @@ impl DisplayThread {
                 io::stdout().flush().unwrap();
                 last_progress = progress;
                 thread::sleep(Duration::from_secs(1));
-                if let Ok(true) = rx.try_recv() {
-                    print!("\r");
-                    return
-                }
+                if let Ok(true) = rx.try_recv() {return}
             }
         });
         Self {tx, handle}

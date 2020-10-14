@@ -11,7 +11,7 @@ use engine;
 const TARGET_FPS: u64 = 60;
 const GAME_TITLE: &str = "Tetris";
 
-pub fn run(train: bool, auto_loop: bool) {
+pub fn run(train: bool, auto_loop: bool, use_best: bool) {
     if train {
         check!(train::train());
         return
@@ -27,17 +27,27 @@ pub fn run(train: bool, auto_loop: bool) {
     // 75 | 1158106 |   17  |    475 | 4.0 : 2.81089 : 0.00000 : 1.44516 : 0.00000 : 1.38000 : 0.12947 : 2.62338 : 0.0 : 0.97880
     //202 | 1037750 |    8  |    252 | 4.0 : 0.78193 : 0.00000 : 0.51338 : 0.09517 : 0.00000 : 0.04101 : 1.00000 : 0.0 : 0.22724
     //251 | 2393169 |   37  |    958 | 4.0 : 0.91413 : 0.00000 : 0.66610 : 0.01078 : 0.22913 : 0.05655 : 0.78533 : 0.0 : 0.27396        9.36M lvl 157 i think thats good enough tbh. it got 60k per level...my record is like 32k/lvl
-    let parameters = ai::AiParameters {
-        min_lines_to_clear:             4.0,
-        lines_cleared_importance:       0.91413,
-        points_scored_importance:       0.00000,
-        piece_depth_importance:         0.66610,
-        max_height_importance:          0.01078,
-        avg_height_importance:          0.22913,
-        height_variation_importance:    0.05655,
-        current_holes_importance:       0.78533,
-        max_pillar_height:              0.0,
-        current_pillars_importance:     0.27396,
+    // 38 | 2030640 |   40  |   1051 | 4.0 : 0.83434 : 0.00000 : 0.98846 : 0.04482 : 0.09175 : 0.00000 : 0.89960 : 0.0 : 0.34672        7.71M lvl 166
+    let parameters = {
+        if use_best {
+            match check!(train::BestResult::get_best()) {
+                Some(params) => params,
+                None         => logged_panic!("Couldnt find best.log! Have you trained the ai at all?"),
+            }
+        } else {
+            ai::AiParameters {
+                min_lines_to_clear:             4.0,
+                lines_cleared_importance:       0.83434,
+                points_scored_importance:       0.00000,
+                piece_depth_importance:         0.98846,
+                max_height_importance:          0.04482,
+                avg_height_importance:          0.09175,
+                height_variation_importance:    0.00000,
+                current_holes_importance:       0.89960,
+                max_pillar_height:              0.0,
+                current_pillars_importance:     0.34672,
+            }
+        }
     };
 
     let mut board = check!(Board::new_board());
@@ -75,7 +85,7 @@ pub fn run(train: bool, auto_loop: bool) {
                 ai_radio = {
                     match ai_radio {
                         Some(_) => None,
-                        None => Some(ai::start(parameters.clone(), false)),     //turn on to debug
+                        None => Some(ai::start(parameters.clone(), false)),     //bool to turn on debug logging
                     }
                 }
             }

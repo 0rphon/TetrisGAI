@@ -5,6 +5,7 @@ mod display;
 
 use super::game::{Board, Move};
 use super::ai;
+pub use progress::BestResult;
 use dynerr::*;
 
 use std::fmt;
@@ -69,6 +70,10 @@ impl GameResult {
     ///prints column labels aligned to formatting
     fn print_header() {
         println!("RANK |  SCORE  | LEVEL | PLACED | PARAMS");
+    }
+
+    pub fn get_parameters(&self) -> Option<ai::AiParameters> {
+        self.parameters
     }
 }
 

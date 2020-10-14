@@ -271,35 +271,36 @@ impl MoveData {
             for _ in distance..0 {moves.push(Move::Left)}
         }
         moves.push(Move::Drop);
-        if log_flag {
-            //TEMP DEBUG LOGGING#######################################################################################
-            log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.value), "ai.log");   //#
-            let mut scores = String::new();                                                                         //#
-            for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              //#
-            log!(scores, "ai.log");                                                                                 //#
-            for row in self.board.chunks(BOARD_WIDTH) {                                                             //#
-                let mut r = String::new();                                                                          //#
-                for column in row {                                                                                 //#
-                    if *column {                                                                                    //#
-                        r.push_str("[X]")                                                                           //#
-                    } else {r.push_str("[ ]")}                                                                      //#
-                }                                                                                                   //#
-                log!(r, "ai.log");                                                                                  //#
-            }                                                                                                       //#
-            log!(format!("current: {:?}", piece.location), "ai.log");                                               //#
-            for row in piece.data.chunks(piece.dim) {                                                               //#
-                let mut r = String::new();                                                                          //#
-                for column in row {                                                                                 //#
-                    if *column {                                                                                    //#
-                        r.push_str("[X]")                                                                           //#
-                    } else {r.push_str("[ ]")}                                                                      //#
-                }                                                                                                   //#
-                log!(r, "ai.log");                                                                                  //#
-            }                                                                                                       //#
-            log!(format!("Moves {:?}\n", moves), "ai.log");                                                         //#
-            //#########################################################################################################
-        }
+        if log_flag {self.log(&piece, &moves)}
         moves
+    }
+
+    ///logs ai activity to ai.log
+    fn log(&self, piece: &pieces::Piece, moves: &Vec<Move>) {
+        log!(format!("target {:?}, {:?} got score: {}", self.location, self.rotation, self.value), "ai.log");   
+        let mut scores = String::new();                                                                         
+        for score in &self.debug_scores {scores.push_str(&format!("{}, ", score))}                              
+        log!(scores, "ai.log");                                                                                 
+        for row in self.board.chunks(BOARD_WIDTH) {                                                             
+            let mut r = String::new();                                                                          
+            for column in row {                                                                                 
+                if *column {                                                                                    
+                    r.push_str("[X]")                                                                           
+                } else {r.push_str("[ ]")}                                                                      
+            }                                                                                                   
+            log!(r, "ai.log");                                                                                  
+        }                                                                                                       
+        log!(format!("current: {:?}", piece.location), "ai.log");                                               
+        for row in piece.data.chunks(piece.dim) {                                                               
+            let mut r = String::new();                                                                          
+            for column in row {                                                                                 
+                if *column {                                                                                    
+                    r.push_str("[X]")                                                                           
+                } else {r.push_str("[ ]")}                                                                      
+            }                                                                                                   
+            log!(r, "ai.log");                                                                                  
+        }                                                                                                       
+        log!(format!("Moves {:?}\n", moves), "ai.log");                                                         
     }
 }
 

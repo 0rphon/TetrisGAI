@@ -107,6 +107,15 @@ impl BestResult {
         best.dedup_by(|a, b| a.result.parameters.eq(&b.result.parameters));
         if best.len() > 10 {best.drain(10..);}
     }
+
+    ///gets the best AiParameters from best.log
+    pub fn get_best() -> DynResult<Option<ai::AiParameters>> {
+        let results = Self::get()?;
+        match results.first() {
+            Some(best) => Ok(best.result.get_parameters()),
+            None => Ok(None),
+        }
+    }
 }
 
 impl fmt::Display for BestResult {
